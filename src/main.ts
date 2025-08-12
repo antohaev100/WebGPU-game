@@ -47,6 +47,18 @@ async function initializeRenderThread() {
         console.error("Canvas element not found.");
         return;
     }
+    
+    // Set initial canvas size to match the viewport
+    const setCanvasSize = () => {
+        const canvas = canvasElement as HTMLCanvasElement;
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        sharedArrayFloat[23] = window.innerWidth / window.innerHeight;
+    };
+    
+    // Set initial size
+    setCanvasSize();
+
     const offscreenCanvas = (canvasElement as HTMLCanvasElement).transferControlToOffscreen();
     
     const renderThread = new Worker(new URL('./render.ts', import.meta.url), { type: 'module' });
