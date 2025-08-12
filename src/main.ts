@@ -40,13 +40,7 @@ sharedArrayUint[27] = 0; // selected powerup effect (enum)
 sharedArrayUint[28] = 0; // selected powerup value
 
 
-async function initializeRenderThread() {
-    // Check if WebGPU is supported
-    if (!navigator.gpu) {
-      console.log("WebGPU is not supported.");
-      return;
-    }
-  
+async function initializeRenderThread() {    
     // Create an HTMLCanvasElement to display the result in the DOM
     const canvasElement = document.getElementById('myCanvas');
     if (!canvasElement) {
@@ -54,10 +48,9 @@ async function initializeRenderThread() {
         return;
     }
     const offscreenCanvas = (canvasElement as HTMLCanvasElement).transferControlToOffscreen();
+    
+    const renderThread = new Worker(new URL('./render.ts', import.meta.url), { type: 'module' });
 
-    const renderThread = new Worker(new URL('./render.ts', import.meta.url));
-
-    //TODO: check
     renderThread.postMessage({type: 'init', canvas: offscreenCanvas, buffer: sharedBuffer}, [offscreenCanvas]);
 
     window.addEventListener('resize', () => {
@@ -98,8 +91,9 @@ async function initializeRenderThread() {
     };
 }
 
-function initializeInputThread() {
-    const inputThread = new Worker(new URL('./input.ts', import.meta.url));
+function initializeInputThread() {    
+    const inputThread = new Worker(new URL('./input.ts', import.meta.url), { type: 'module' });
+
     inputThread.postMessage({ type: 'init', buffer: sharedBuffer });
     window.addEventListener('keydown', (event) => {
         inputThread.postMessage({ type: 'keydown', key: event.key });

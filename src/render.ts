@@ -2,17 +2,17 @@
 /// <reference lib="webworker" />
 
 
-import vertexShaderCode from './shaders/vert.wgsl';
-import fragmentShaderCode from './shaders/frag.wgsl';
-import objectMovementShaderCode from './shaders/objectMovement.wgsl';
-import objectCollisionShaderCode from './shaders/objectCollision.wgsl';
-import resetHashShaderCode from './shaders/resetHash.wgsl';
-import spawnEnemyShaderCode from './shaders/spawnEnemy.wgsl';
-import projectileShaderCode from './shaders/projectiles.wgsl';
-import spawnProjectileShaderCode from './shaders/spawnProjectiles.wgsl';
-import preProcessShaderCode from './shaders/preProcess.wgsl';
-import postProcessShaderCode from './shaders/postProcess.wgsl';
-import powerupShaderCode from './shaders/powerup.wgsl';
+import vertexShaderCode from './shaders/vert.wgsl?raw';
+import fragmentShaderCode from './shaders/frag.wgsl?raw';
+import objectMovementShaderCode from './shaders/objectMovement.wgsl?raw';
+import objectCollisionShaderCode from './shaders/objectCollision.wgsl?raw';
+import resetHashShaderCode from './shaders/resetHash.wgsl?raw';
+import spawnEnemyShaderCode from './shaders/spawnEnemy.wgsl?raw';
+import projectileShaderCode from './shaders/projectiles.wgsl?raw';
+import spawnProjectileShaderCode from './shaders/spawnProjectiles.wgsl?raw';
+import preProcessShaderCode from './shaders/preProcess.wgsl?raw';
+import postProcessShaderCode from './shaders/postProcess.wgsl?raw';
+import powerupShaderCode from './shaders/powerup.wgsl?raw';
 import { 
     objectTypeData, indirectData, vertexBufferData, indexBufferData,
 } from './geometry';

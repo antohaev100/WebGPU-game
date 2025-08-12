@@ -59,7 +59,7 @@ function update() {
     dt = (timestamp - previousTimestamp) / 1000; // Calculate dt as the time difference in seconds
     previousTimestamp = timestamp; // Update the previous timestamp
     //-------------calculate Movment-------------------
-    movement.fill(0); // Reset movement vector
+    vec2.zero(movement); // Reset movement vector
     if (keysPressed['w']) movement[1] -= 1;
     if (keysPressed['a']) movement[0] -= 1;
     if (keysPressed['s']) movement[1] += 1;
