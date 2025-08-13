@@ -1,0 +1,11 @@
+/* UI elements */
+#fps {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    color: white;
+    background-color: black;
+    padding: 5px;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+}
