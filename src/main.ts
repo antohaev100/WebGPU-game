@@ -1,43 +1,7 @@
 /// <reference types="@webgpu/types" />
 
-// Initialize global variables in a SharedArrayBuffer
-const sharedBuffer = new SharedArrayBuffer(32 * 4);
-const sharedArrayFloat = new Float32Array(sharedBuffer);
-const sharedArrayUint = new Uint32Array(sharedBuffer);
-
-
-sharedArrayFloat[0] = 1.0; // playerRotMat[0]
-sharedArrayFloat[1] = 0.0; // playerRotMat[1]
-sharedArrayFloat[2] = 0.0; // playerRotMat[2]
-sharedArrayFloat[3] = 1.0; // playerRotMat[3]
-sharedArrayFloat[4] = 7.0; // playerPosition x
-sharedArrayFloat[5] = 7.0; // playerPosition z
-sharedArrayFloat[6] = 8.33; // dt
-
-sharedArrayFloat[7] = 0; // vp[0]
-sharedArrayFloat[8] = 0; // vp[1]
-sharedArrayFloat[9] = 0; // vp[2]
-sharedArrayFloat[10] = 0; // vp[3]
-sharedArrayFloat[11] = 0; // vp[4]
-sharedArrayFloat[12] = 0; // vp[5]
-sharedArrayFloat[13] = 0; // vp[6]
-sharedArrayFloat[14] = 0; // vp[7]
-sharedArrayFloat[15] = 0; // vp[8]
-sharedArrayFloat[16] = 0; // vp[9]
-sharedArrayFloat[17] = 0; // vp[10]
-sharedArrayFloat[18] = 0; // vp[11]
-sharedArrayFloat[19] = 0; // vp[12]
-sharedArrayFloat[20] = 0; // vp[13]
-sharedArrayFloat[21] = 0; // vp[14]
-sharedArrayFloat[22] = 0; // vp[15]
-
-sharedArrayFloat[23] = 1; // widthHeightRatio
-
-sharedArrayUint[24] = 0; // pending powerup selection
-sharedArrayUint[25] = 0; // powerup control varaible
-sharedArrayUint[26] = 0; // powerup selected (0 or option number)
-sharedArrayUint[27] = 0; // selected powerup effect (enum)
-sharedArrayUint[28] = 0; // selected powerup value
+import { GameStateManager, PowerupEffect } from './game/game-state';
+const gameState = GameStateManager.getInstance();
 
 
 async function initializeRenderThread() {    
@@ -53,7 +17,7 @@ async function initializeRenderThread() {
         const canvas = canvasElement as HTMLCanvasElement;
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
-        sharedArrayFloat[23] = window.innerWidth / window.innerHeight;
+        gameState.setWidthHeightRatio(window.innerWidth / window.innerHeight)
     };
     
     // Set initial size
@@ -63,10 +27,10 @@ async function initializeRenderThread() {
     
     const renderThread = new Worker(new URL('./render.ts', import.meta.url), { type: 'module' });
 
-    renderThread.postMessage({type: 'init', canvas: offscreenCanvas, buffer: sharedBuffer}, [offscreenCanvas]);
+    renderThread.postMessage({type: 'init', canvas: offscreenCanvas, buffer: gameState.getSharedBuffer()}, [offscreenCanvas]);
 
     window.addEventListener('resize', () => {
-        sharedArrayFloat[23] = canvasElement.clientWidth / canvasElement.clientHeight;
+        gameState.setWidthHeightRatio(canvasElement.clientWidth / canvasElement.clientHeight);
         renderThread.postMessage({ type: 'resize', width: canvasElement.clientWidth, height: canvasElement.clientHeight });
     });
 
@@ -77,18 +41,21 @@ async function initializeRenderThread() {
     let fpsTimestamp = previousTimestamp;
     renderThread.onmessage = (event) => {
         if(event.data.type === 'frameDone') {
-            if(sharedArrayUint[24] != 0 && sharedArrayUint[25] == 0) {
+            const pendingPowerupSelection = gameState.getPendingPowerupSelection();
+            const powerupControl = gameState.getPowerupControl();
+            const powerupSelected = gameState.getPowerupSelected();
+            if(pendingPowerupSelection != 0 && powerupControl == 0) {
                 showPowerupOptions();
-            } else if(sharedArrayUint[25] == 2) {
-                console.log("Powerup selected: " + sharedArrayUint[26]);
-                selectPowerup()
+            } else if(powerupControl == 2) {
+                console.log("Powerup selected: " + powerupSelected);
+                selectPowerup();
             }
 
             // Calculate dt
             let timestamp = performance.now(); // Get the current timestamp
             let dt = (timestamp - previousTimestamp) / 1000; // Calculate dt as the time difference in seconds
             previousTimestamp = timestamp; // Update the previous timestamp
-            sharedArrayFloat[6] = dt;
+            gameState.setDeltaTime(dt);
             // Calculate FPS
             frameCount++;
             if (timestamp - fpsTimestamp >= 1000) {
@@ -106,7 +73,7 @@ async function initializeRenderThread() {
 function initializeInputThread() {    
     const inputThread = new Worker(new URL('./input.ts', import.meta.url), { type: 'module' });
 
-    inputThread.postMessage({ type: 'init', buffer: sharedBuffer });
+    inputThread.postMessage({ type: 'init', buffer: gameState.getSharedBuffer() });
     window.addEventListener('keydown', (event) => {
         inputThread.postMessage({ type: 'keydown', key: event.key });
     });
@@ -124,12 +91,7 @@ let values : number[] = new Array(3);
 let descriptionElements: Array<HTMLElement | null> = [];
 let selectionTimeoutId: ReturnType<typeof setTimeout> | null = null;
 let selectionTimeMs = 5000; // 5 seconds to select
-enum PowerupEffect {
-    FireCount = 0,
-    Penetration = 1,
-    Damage = 2,
-    FireRate = 3,
-}
+
 // Initialize powerup UI elements
 function initPowerupUI() {
     optionsElement = document.getElementById('powerup-options');
@@ -201,23 +163,24 @@ function showPowerupOptions() {
             timerBar.style.width = '0%';
         }
       }, 50);    
-    sharedArrayUint[24] -= 1; // decrement pending powerup
-    sharedArrayUint[25] = 1;
+    
+    gameState.decrementPendingPowerupSelection();
+    gameState.setPowerupControl(1);
 
     // Set timeout for auto-selection if user doesn't choose in time
     selectionTimeoutId = setTimeout(() => {
         // Random selection if time runs out
         resetTimer();
-        sharedArrayUint[25] = 0;
+        gameState.setPowerupControl(0);
     }, selectionTimeMs);
 }
 
 // Select powerup and apply it
 function selectPowerup() {
     resetTimer();
-    sharedArrayUint[27] = effects[sharedArrayUint[26]]; // selected powerup effect (enum)
-    sharedArrayUint[28] = values[sharedArrayUint[26]]; // selected powerup value
-    sharedArrayUint[25] = 3; // set powerup control to 3
+    gameState.setSelectedPowerupEffect(effects[gameState.getPowerupSelected()]);
+    gameState.setSelectedPowerupValue(values[gameState.getPowerupSelected()]);
+    gameState.setPowerupControl(3);
 }
 
 document.addEventListener('DOMContentLoaded', () => {

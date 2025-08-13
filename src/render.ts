@@ -1,6 +1,8 @@
 /// <reference types="@webgpu/types" />
 /// <reference lib="webworker" />
 
+import { GameStateManager, PowerupEffect } from './game/game-state';
+let gameState: GameStateManager;
 
 import vertexShaderCode from './shaders/vert.wgsl?raw';
 import fragmentShaderCode from './shaders/frag.wgsl?raw';
@@ -22,8 +24,6 @@ const maxEnemyNum = 1024;
 const maxProjectileNum = 1024;
 const maxPowerupNum = 256;
 const FIF = 2; //frames in flight
-let renderSA: Float32Array;
-let renderSAUint: Uint32Array;
 
 let device: GPUDevice;
 let context: GPUCanvasContext;
@@ -1037,7 +1037,7 @@ function randomSpawnPosition() {
         pos[1] = -15;
         pos[0] = Math.random() * 30 - 15;
     }
-    let playerPos : [number, number] = [renderSA[4], renderSA[5]];
+    const playerPos : [number, number] = gameState.getPlayerPosition();
     pos[0] += playerPos[0];
     pos[1] += playerPos[1];
     return pos;
@@ -1102,13 +1102,6 @@ async function debugGpuBuffer(buffer: GPUBuffer, from : number, to: number) {
     cpuReadBuffer.unmap();
 }
 
-enum PowerupEffect {
-    FireCount = 0,
-    Penetration = 1,
-    Damage = 2,
-    FireRate = 3,
-}
-
 function preparePowerupData(effect: number, value : number, mappedRangeWriteUint: Uint32Array, mappedRangeWriteFloat: Float32Array) {
     console.log("effect: " + effect + " value: " + value);
 
@@ -1165,20 +1158,20 @@ async function updateUniformBuffer(commandEncoder: GPUCommandEncoder) {
     const mappedRangeRead = cpuReadBuffer.getMappedRange();
     const mappedRangeReadUint = new Uint32Array(mappedRangeRead);
     if(mappedRangeReadUint[0] != 0) {
-        renderSAUint[24] += mappedRangeReadUint[0];
+        gameState.incrementPendingPowerupSelection(mappedRangeReadUint[0]);
     }
     cpuReadBuffer.unmap();
     await cpuWriteBuffer.mapAsync(GPUMapMode.WRITE);
     const mappedRangeWrite = cpuWriteBuffer.getMappedRange();
     const mappedRangeWriteFloat = new Float32Array(mappedRangeWrite);
     const mappedRangeWriteUint = new Uint32Array(mappedRangeWrite);
-    mappedRangeWriteFloat.set(renderSA.subarray(0,23));
+    mappedRangeWriteFloat.set(gameState.getCpuWriteSubArray());
     if(spawnEnemies1) {
         spawnNum = Math.floor(Math.random() * maxSpawnNum) + 1;
         generateEnemies(spawnNum, mappedRangeWriteFloat, mappedRangeWriteUint);
-    } else if(renderSAUint[25] == 3) {
+    } else if(gameState.getPowerupControl() == 3) {
         powerup = true;
-        preparePowerupData(renderSAUint[27], renderSAUint[28], mappedRangeWriteUint, mappedRangeWriteFloat);
+        preparePowerupData(gameState.getSelectedPowerupEffect(), gameState.getSelectedPowerupValue(), mappedRangeWriteUint, mappedRangeWriteFloat);
     }
     cpuWriteBuffer.unmap();
     commandEncoder.copyBufferToBuffer(gpuWriteBuffer, 0, cpuReadBuffer, 0, 16);
@@ -1187,9 +1180,9 @@ async function updateUniformBuffer(commandEncoder: GPUCommandEncoder) {
     if(spawnEnemies1) {
         commandEncoder.copyBufferToBuffer(cpuWriteBuffer, 92, addEnemyBuffer, 0, (spawnNum+1) * 16);
     } else if(powerup) {
-        applyPowerup(renderSAUint[27], commandEncoder);
+        applyPowerup(gameState.getSelectedPowerupEffect(), commandEncoder);
         powerup = false;
-        renderSAUint[25] = 0;
+        gameState.setPowerupControl(0);
     }
 }
 
@@ -1310,8 +1303,7 @@ self.addEventListener("message", async (event) => {
         resizeCanvas(event.data.width, event.data.height);
     } else if (event.data.type === 'init') {
         canvas = event.data.canvas;
-        renderSA = new Float32Array(event.data.buffer);
-        renderSAUint = new Uint32Array(event.data.buffer);
+        gameState = GameStateManager.createFromSharedBuffer(event.data.buffer);
         initWebGPU().then(() => {
             render();
         });

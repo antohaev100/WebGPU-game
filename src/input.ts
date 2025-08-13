@@ -1,9 +1,12 @@
 import { vec2 } from "gl-matrix";
 import { mat4 } from "gl-matrix";
 
+import { GameStateManager } from './game/game-state';
+let gameState: GameStateManager;
+
 const PI = Math.PI;
-let inputSA: Float32Array;
-let inputSAUint: Uint32Array;
+//let inputSA: Float32Array;
+//let inputSAUint: Uint32Array;
 let pos: [number, number];
 let nextPos : [number, number];
 let angle = 0.0;
@@ -23,10 +26,9 @@ function lerpDegrees(a: number, b: number, t: number, dt: number, mindiff: numbe
 
 self.addEventListener('message', (event) => {
     if (event.data.type === 'init') {
-        inputSA = new Float32Array(event.data.buffer);
-        inputSAUint = new Uint32Array(event.data.buffer);
-        pos = [inputSA[4], inputSA[5]];
-        nextPos = [inputSA[4], inputSA[5]];
+        gameState = GameStateManager.createFromSharedBuffer(event.data.buffer);
+        pos = gameState.getPlayerPosition();
+        nextPos = [pos[0], pos[1]];
         update();
     } else {
         const { type, key } = event.data;
@@ -49,10 +51,10 @@ const vpMatrix = mat4.create();
 let aspect: number = 0.0;
 
 function update() {
-    if(inputSAUint[25] == 1) {
-        if(keysPressed['1']) {inputSAUint[26] = 0; inputSAUint[25] = 2; keysPressed['1'] = false;}
-        else if(keysPressed['2']) {inputSAUint[26] = 1; inputSAUint[25] = 2; keysPressed['2'] = false;}
-        else if(keysPressed['3']) {inputSAUint[26] = 2; inputSAUint[25] = 2; keysPressed['3'] = false;}
+    if(gameState.getPowerupControl() == 1) {
+        if(keysPressed['1']) {gameState.setPowerupSelected(0); gameState.setPowerupControl(2); keysPressed['1'] = false;}
+        else if(keysPressed['2']) {gameState.setPowerupSelected(1); gameState.setPowerupControl(2); keysPressed['2'] = false;}
+        else if(keysPressed['3']) {gameState.setPowerupSelected(2); gameState.setPowerupControl(2); keysPressed['3'] = false;}
     }
     //-------------Calculate dt-------------------
     timestamp = performance.now(); // Get the current timestamp
@@ -72,22 +74,19 @@ function update() {
     if(movement[0] != 0 || movement[1] != 0) {
         nextAngle = Math.atan2(-movement[1], movement[0]);
         angle = lerpDegrees(angle, nextAngle, 0.00001, dt, 0.01);
-        inputSA[0] = Math.cos(angle);
-        inputSA[1] = Math.cos(angle + PI / 2);
-        inputSA[2] = Math.sin(angle);
-        inputSA[3] = Math.sin(angle + PI / 2);
+        gameState.setPlayerRotationMatrix([Math.cos(angle), Math.cos(angle + PI / 2), Math.sin(angle), Math.sin(angle + PI / 2)]);
     }
     pos[0] = lerp(pos[0], nextPos[0], 0.001, dt, 0.01);
     pos[1] = lerp(pos[1], nextPos[1], 0.001, dt, 0.01);
-    inputSA[4] = pos[0];
-    inputSA[5] = pos[1];
+    gameState.setPlayerPosition(pos);
     //-------------calculate VP-------------------
     mat4.lookAt(viewMatrix, [pos[0], 8, pos[1]+6], [pos[0], 0, pos[1]], [0, 1, 0]);
-    if(aspect != inputSA[23]) {
-        aspect = inputSA[23];
+    const CurrentAspect = gameState.getWidthHeightRatio();
+    if(aspect != CurrentAspect) {
+        aspect = CurrentAspect;
         mat4.perspective(projectionMatrix, Math.PI / 4, aspect, 0.1, 100.0);
     }
     mat4.multiply(vpMatrix, projectionMatrix, viewMatrix);
-    inputSA.set(vpMatrix, 7);
+    gameState.setViewProjectionMatrix(new Float32Array(vpMatrix));
     setTimeout(update, 1); // Schedule the next update
 }

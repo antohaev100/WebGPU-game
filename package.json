@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit",
+    "dev:original": "vite --open --config vite.config.original.ts",
+    "build:original": "tsc && vite build --config vite.config.original.ts"
   },
   "devDependencies": {
     "@types/gl-matrix": "^2.4.5",
