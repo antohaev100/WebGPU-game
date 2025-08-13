@@ -3,18 +3,20 @@
 
 import { GameStateManager, PowerupEffect } from './game/game-state';
 let gameState: GameStateManager;
-
-import vertexShaderCode from './shaders/vert.wgsl?raw';
-import fragmentShaderCode from './shaders/frag.wgsl?raw';
-import objectMovementShaderCode from './shaders/objectMovement.wgsl?raw';
-import objectCollisionShaderCode from './shaders/objectCollision.wgsl?raw';
-import resetHashShaderCode from './shaders/resetHash.wgsl?raw';
-import spawnEnemyShaderCode from './shaders/spawnEnemy.wgsl?raw';
-import projectileShaderCode from './shaders/projectiles.wgsl?raw';
-import spawnProjectileShaderCode from './shaders/spawnProjectiles.wgsl?raw';
-import preProcessShaderCode from './shaders/preProcess.wgsl?raw';
-import postProcessShaderCode from './shaders/postProcess.wgsl?raw';
-import powerupShaderCode from './shaders/powerup.wgsl?raw';
+import { ShaderManager } from './rendering/shaders/shader-manager';
+import { SHADER_DESCRIPTORS } from './rendering/shaders/shader-registry';
+const shaderManager = ShaderManager.getInstance();
+//import vertexShaderCode from './shaders/vert.wgsl?raw';
+//import fragmentShaderCode from './shaders/frag.wgsl?raw';
+//import objectMovementShaderCode from './shaders/objectMovement.wgsl?raw';
+//import objectCollisionShaderCode from './shaders/objectCollision.wgsl?raw';
+//import resetHashShaderCode from './shaders/resetHash.wgsl?raw';
+//import spawnEnemyShaderCode from './shaders/spawnEnemy.wgsl?raw';
+//import projectileShaderCode from './shaders/projectiles.wgsl?raw';
+//import spawnProjectileShaderCode from './shaders/spawnProjectiles.wgsl?raw';
+//import preProcessShaderCode from './shaders/preProcess.wgsl?raw';
+//import postProcessShaderCode from './shaders/postProcess.wgsl?raw';
+//import powerupShaderCode from './shaders/powerup.wgsl?raw';
 import { 
     objectTypeData, indirectData, vertexBufferData, indexBufferData,
 } from './geometry';
@@ -325,7 +327,7 @@ function createPipelines() {
             bindGroupLayouts: [powerupBindGroupLayout],
         }),
         compute: {
-            module: device.createShaderModule({ code: powerupShaderCode }),
+            module: shaderManager.getShaderModule('powerup'),
             entryPoint: 'main',
         },
     });
@@ -373,7 +375,7 @@ function createPipelines() {
             bindGroupLayouts: [postProcessBindGroupLayout],
         }),
         compute: {
-            module: device.createShaderModule({ code: postProcessShaderCode }),
+            module: shaderManager.getShaderModule('postProcess'),
             entryPoint: 'main',
         },
     });
@@ -433,7 +435,7 @@ function createPipelines() {
             bindGroupLayouts: [preProcessBindGroupLayout],
         }),
         compute: {
-            module: device.createShaderModule({ code: preProcessShaderCode }),
+            module: shaderManager.getShaderModule('preProcess'),
             entryPoint: 'main',
         },
     });
@@ -492,7 +494,7 @@ function createPipelines() {
             bindGroupLayouts: [spawnProjectileBindGroupLayout],
         }),
         compute: {
-            module: device.createShaderModule({ code: spawnProjectileShaderCode }),
+            module: shaderManager.getShaderModule('spawnProjectile'),
             entryPoint: 'main',
         },
     });
@@ -605,7 +607,7 @@ function createPipelines() {
             bindGroupLayouts: [projectileBindGroupLayout],
         }),
         compute: {
-            module: device.createShaderModule({ code: projectileShaderCode }),
+            module: shaderManager.getShaderModule('projectile'),
             entryPoint: 'main',
         },
     });
@@ -664,7 +666,7 @@ function createPipelines() {
             bindGroupLayouts: [spawnEnemyBindGroupLayout],
         }),
         compute: {
-            module: device.createShaderModule({ code: spawnEnemyShaderCode }),
+            module: shaderManager.getShaderModule('spawnEnemy'),
             entryPoint: 'main',
         },
     });
@@ -697,7 +699,7 @@ function createPipelines() {
             bindGroupLayouts: [resetHashBindGroupLayout],
         }),
         compute: {
-            module: device.createShaderModule({ code: resetHashShaderCode }),
+            module: shaderManager.getShaderModule('resetHash'),
             entryPoint: 'main',
         },
     });
@@ -755,7 +757,7 @@ function createPipelines() {
             bindGroupLayouts: [objectCollisionBindGroupLayout],
         }),
         compute: {
-            module: device.createShaderModule({ code: objectCollisionShaderCode }),
+            module: shaderManager.getShaderModule('objectCollision'),
             entryPoint: 'main',
         },
     });
@@ -843,7 +845,7 @@ function createPipelines() {
             bindGroupLayouts: [computeObjectBindGroupLayout],
         }),
         compute: {
-            module: device.createShaderModule({ code: objectMovementShaderCode }),
+            module: shaderManager.getShaderModule('objectMovement'),
             entryPoint: 'main',
         },
     });
@@ -867,7 +869,7 @@ function createPipelines() {
             bindGroupLayouts: [renderBindGroupLayout],
         }),
         vertex: {
-            module: device.createShaderModule({ code: vertexShaderCode }),
+            module: shaderManager.getShaderModule('vertex'),
             entryPoint: 'main',
             buffers: [
                 {
@@ -909,7 +911,7 @@ function createPipelines() {
             ],
         },
         fragment: {
-            module: device.createShaderModule({ code: fragmentShaderCode }),
+            module: shaderManager.getShaderModule('fragment'),
             entryPoint: 'main',
             targets: [
                 {
@@ -1000,6 +1002,9 @@ async function initWebGPU() {
         console.error("Failed to get GPU device.");
         return;
     }
+
+    shaderManager.initialize(device);
+    shaderManager.registerShaders(SHADER_DESCRIPTORS);
 
     if (!canvas) {
         console.error("Canvas is not initialized.");

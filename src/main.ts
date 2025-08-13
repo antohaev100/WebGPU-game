@@ -119,15 +119,6 @@ function resetTimer() {
 
 
 function showPowerupOptions() {
-    //if (selectionTimeoutId !== null) {
-    //    clearTimeout(selectionTimeoutId);
-    //    selectionTimeoutId = null;
-    //    if (timerBar) {
-    //        timerBar.style.transition = '';
-    //        timerBar.style.width = '100%';
-    //    }
-    //}
-
     for(let i = 0; i < 3; i++) {
         effects[i] = Math.floor(Math.random() * 4); //0 1 2 3
         switch (effects[i]) {
