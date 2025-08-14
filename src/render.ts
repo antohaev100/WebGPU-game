@@ -3,29 +3,14 @@
 
 import { GameStateManager, PowerupEffect } from './game/game-state';
 let gameState: GameStateManager;
-import { ShaderManager } from './rendering/shaders/shader-manager';
-import { SHADER_DESCRIPTORS } from './rendering/shaders/shader-registry';
+
+import { ShaderManager , SHADER_DESCRIPTORS} from './rendering/shaders';
 const shaderManager = ShaderManager.getInstance();
-//import vertexShaderCode from './shaders/vert.wgsl?raw';
-//import fragmentShaderCode from './shaders/frag.wgsl?raw';
-//import objectMovementShaderCode from './shaders/objectMovement.wgsl?raw';
-//import objectCollisionShaderCode from './shaders/objectCollision.wgsl?raw';
-//import resetHashShaderCode from './shaders/resetHash.wgsl?raw';
-//import spawnEnemyShaderCode from './shaders/spawnEnemy.wgsl?raw';
-//import projectileShaderCode from './shaders/projectiles.wgsl?raw';
-//import spawnProjectileShaderCode from './shaders/spawnProjectiles.wgsl?raw';
-//import preProcessShaderCode from './shaders/preProcess.wgsl?raw';
-//import postProcessShaderCode from './shaders/postProcess.wgsl?raw';
-//import powerupShaderCode from './shaders/powerup.wgsl?raw';
-import { 
-    objectTypeData, indirectData, vertexBufferData, indexBufferData,
-} from './geometry';
-const enemyTypeNum = objectTypeData.length / 4;
-const drawNum = indirectData.length / 5;
-const maxEnemyNum = 1024;
-const maxProjectileNum = 1024;
-const maxPowerupNum = 256;
-const FIF = 2; //frames in flight
+
+import { GAME_CONSTANTS } from './game/constants';
+import { drawNum, createBuffers, objectTypeData } from './rendering/buffers';
+import type { Buffers } from './rendering/buffers';
+
 
 let device: GPUDevice;
 let context: GPUCanvasContext;
@@ -42,36 +27,18 @@ let preProcessPipeline: GPUComputePipeline;
 let postProcessPipeline: GPUComputePipeline;
 let powerupPipeline: GPUComputePipeline;
 
-let preProcessBindGroup: GPUBindGroup[] = new Array(FIF);
-let postProcessBindGroup: GPUBindGroup[] = new Array(FIF);
-let renderBindGroup: GPUBindGroup[] = new Array(FIF);
-let objectBindGroup: GPUBindGroup[] = new Array(FIF);
-let projectileBindGroup: GPUBindGroup[] = new Array(FIF);
-let powerupBindGroup: GPUBindGroup[] = new Array(FIF);
+let preProcessBindGroup: GPUBindGroup[] = new Array(GAME_CONSTANTS.FRAMES_IN_FLIGHT);
+let postProcessBindGroup: GPUBindGroup[] = new Array(GAME_CONSTANTS.FRAMES_IN_FLIGHT);
+let renderBindGroup: GPUBindGroup[] = new Array(GAME_CONSTANTS.FRAMES_IN_FLIGHT);
+let objectBindGroup: GPUBindGroup[] = new Array(GAME_CONSTANTS.FRAMES_IN_FLIGHT);
+let projectileBindGroup: GPUBindGroup[] = new Array(GAME_CONSTANTS.FRAMES_IN_FLIGHT);
+let powerupBindGroup: GPUBindGroup[] = new Array(GAME_CONSTANTS.FRAMES_IN_FLIGHT);
 let objectCollisionBindGroup: GPUBindGroup;
 let resetHashBindGroup: GPUBindGroup;
 let spawnEnemyBindGroup: GPUBindGroup;
 let spawnProjectileBindGroup: GPUBindGroup;
 
-let vertexBuffer: GPUBuffer;
-let indexBuffer: GPUBuffer;
-
-let VPBuffer: GPUBuffer[] = new Array(FIF); //view projection buffer
-let cpuWriteBuffer: GPUBuffer;
-let gpuWriteBuffer: GPUBuffer;
-let cpuReadBuffer: GPUBuffer;
-
-let objectBuffer: GPUBuffer;
-let addEnemyBuffer: GPUBuffer;
-let hashMapBuffer: GPUBuffer;
-let uniformBuffer: GPUBuffer;
-let indirectBuffer: GPUBuffer[] = new Array(FIF);
-let instanceBuffer: GPUBuffer[] = new Array(FIF);
-let projectileBuffer: GPUBuffer;
-let controlBuffer: GPUBuffer;
-let powerupBuffer: GPUBuffer;
-
-//let imageBitmap: ImageBitmap[] = new Array(FIF);
+let buffers: Buffers;
 
 let msaaTexture: GPUTexture;
 let msaaTextureView: GPUTextureView;
@@ -82,167 +49,16 @@ let cf = 0; //current frame
 let nf = 1; //next frame
 let spawnEnemies1 : boolean = false;
 let spawnNum = 0;
-const maxSpawnNum = 64;
 let spawnProjectile : boolean = false;
 
-let fireRate = 250; // 500ms
-let damage = 50;
-let fireCount = 3;
-let penetration = 3;
+let fireRate: number = GAME_CONSTANTS.DEFAULT_FIRE_RATE;
+let damage = GAME_CONSTANTS.DEFAULT_DAMAGE;
+let fireCount = GAME_CONSTANTS.DEFAULT_FIRE_COUNT;
+let penetration = GAME_CONSTANTS.DEFAULT_PENETRATION;
 
 
 
-function createBuffers() { 
-    cpuReadBuffer = device.createBuffer({
-        size: 4 * 4, // 4 int
-        usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
-        mappedAtCreation: true,
-    });
-    const mappedReadData = cpuReadBuffer.getMappedRange();
-    const mappedReadDataUint = new Uint32Array(mappedReadData);
-    mappedReadDataUint.fill(0);
-    cpuReadBuffer.unmap();
-    gpuWriteBuffer = device.createBuffer({
-        size: 4 * 4, // 4 int
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
-    });
 
-    powerupBuffer = device.createBuffer({
-        size: (maxPowerupNum * (2+2)) * 4, //
-        usage: GPUBufferUsage.STORAGE,
-        mappedAtCreation: true,
-    });
-    const mappedPowerupData = powerupBuffer.getMappedRange();
-    const mappedPowerupDataFloat = new Float32Array(mappedPowerupData);
-    mappedPowerupDataFloat.fill(0);
-    powerupBuffer.unmap();
-
-    controlBuffer = device.createBuffer({
-        size: 64, // 4x4 matrix
-        usage: GPUBufferUsage.STORAGE,
-        mappedAtCreation: true,
-    });
-    const mappedControlData = controlBuffer.getMappedRange();
-    const mappedControlDataUint = new Uint32Array(mappedControlData);
-    mappedControlDataUint.fill(0);
-    controlBuffer.unmap();
-
-
-    projectileBuffer = device.createBuffer({
-        size: (maxProjectileNum * (1+4)) * 4, //
-        usage: GPUBufferUsage.STORAGE, 
-        mappedAtCreation: true,
-    });
-    const mappedProjectileData = projectileBuffer.getMappedRange();
-    const mappedProjectileDataUint = new Uint32Array(mappedProjectileData);
-    mappedProjectileDataUint.set([0, 0, 0], 1);
-    mappedProjectileDataUint.fill(0, 4 + maxProjectileNum *4);
-    projectileBuffer.unmap();
-
-
-    addEnemyBuffer = device.createBuffer({
-        size: (4) * (maxSpawnNum + 1) * 4, //
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
-
-    hashMapBuffer = device.createBuffer({
-        size: (32 * 16 * (8 + 1)) * 4,
-        usage: GPUBufferUsage.STORAGE,
-    });
-
-    cpuWriteBuffer = device.createBuffer({
-        size: (23 + (maxSpawnNum+1)*4) * 4, // 32 32bit numbers
-        usage: GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC,
-    });
-
-    for(let i = 0; i < FIF; i++) {
-        VPBuffer[i] = device.createBuffer({
-            size: 4 * 4 * 4, // 4x4 matrix
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        });
-    }
-
-    const indirectDispatchData = new Uint32Array([
-        1, 1, 1,
-        0, 1, 1,
-        0, 1, 1,
-    ]);
-
-    for(let i = 0; i < FIF; i++) {
-        indirectBuffer[i] = device.createBuffer({
-            size: indirectData.byteLength + indirectDispatchData.byteLength,
-            usage: GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE,
-            mappedAtCreation: true,
-        });
-        const mappedIndirectData = new Uint32Array(indirectBuffer[i].getMappedRange());
-        mappedIndirectData.set(indirectData, 0);
-        mappedIndirectData.set(indirectDispatchData, indirectData.length);
-        indirectBuffer[i].unmap();
-    }
-
-    const playerStarterHp = new Float32Array([
-        80,
-    ]);
-    
-    objectBuffer = device.createBuffer({
-        size: (4 + maxEnemyNum * (1+1+4)) * 4, //
-        usage: GPUBufferUsage.STORAGE,
-        mappedAtCreation: true,
-    });
-    const mappedRange = objectBuffer.getMappedRange();
-    const mappedObjectDataFloat = new Float32Array(mappedRange);
-    mappedObjectDataFloat.fill(0);
-    mappedObjectDataFloat.set(playerStarterHp, 0);
-    objectBuffer.unmap();
-    
-    const tileInstanceRotData = new Float32Array([1,0,0,1]);
-    const tilePosData = new Float32Array([7,7]);
-    //tilepos + player(obj,hpf,hpb)
-    const instanceSize = (2 + (maxEnemyNum+1) * 2 + maxEnemyNum * enemyTypeNum + maxProjectileNum) * 6 * 4 + 672;
-    for(let i = 0; i < FIF; i++) {
-        instanceBuffer[i] = device.createBuffer({
-            size: instanceSize, //vec2 *3
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX,
-            mappedAtCreation: true,
-        });
-        const mappedInstanceData = new Float32Array(instanceBuffer[i].getMappedRange());
-        mappedInstanceData.fill(0);
-        mappedInstanceData.set(tilePosData, 0);
-        mappedInstanceData.set(tileInstanceRotData, 2);
-        instanceBuffer[i].unmap();
-    }
-
-    vertexBuffer = device.createBuffer({
-        size: vertexBufferData.byteLength,
-        usage: GPUBufferUsage.VERTEX,
-        mappedAtCreation: true,
-    });
-    const mappedVertexData = new Float32Array(vertexBuffer.getMappedRange());
-    mappedVertexData.set(vertexBufferData, 0);
-    vertexBuffer.unmap();
-
-    indexBuffer = device.createBuffer({
-        size: indexBufferData.byteLength,
-        usage: GPUBufferUsage.INDEX,
-        mappedAtCreation: true,
-    });
-    const mappedIndexData = new Uint16Array(indexBuffer.getMappedRange());
-    mappedIndexData.set(indexBufferData, 0);
-    indexBuffer.unmap();
-
-    uniformBuffer = device.createBuffer({
-        size: 8 * 4 + objectTypeData.byteLength + 8 * 4,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        mappedAtCreation: true,
-    });
-    const mappedUniformData = uniformBuffer.getMappedRange();
-    const mappedUniformDataFloat = new Float32Array(mappedUniformData);
-    const mappedUniformDataUint = new Uint32Array(mappedUniformData);
-    mappedUniformDataFloat.set(objectTypeData, 8);
-    mappedUniformDataUint.set([fireCount, penetration],8 + objectTypeData.length);
-    mappedUniformDataFloat.set([damage, 20, 0.04], 8 + objectTypeData.length + 2);
-    uniformBuffer.unmap();
-}
 
 function createPipelines() {
     // ---------------------------POWERUP PIPELINE--------------------------------
@@ -285,38 +101,38 @@ function createPipelines() {
             },
         ],
     });
-    for(let i = 0; i < FIF; i++) {
+    for(let i = 0; i < GAME_CONSTANTS.FRAMES_IN_FLIGHT; i++) {
         powerupBindGroup[i] = device.createBindGroup({
             layout: powerupBindGroupLayout,
             entries: [
                 {
                     binding: 0,
                     resource: {
-                        buffer: powerupBuffer,
+                        buffer: buffers.powerup,
                     },
                 },
                 {
                     binding: 1,
                     resource: {
-                        buffer: instanceBuffer[i],
+                        buffer: buffers.instance[i],
                     },
                 },
                 {
                     binding: 2,
                     resource: {
-                        buffer: uniformBuffer,
+                        buffer: buffers.uniform,
                     },
                 },
                 {
                     binding: 3,
                     resource: {
-                        buffer: controlBuffer,
+                        buffer: buffers.control,
                     },
                 },
                 {
                     binding: 4,
                     resource: {
-                        buffer: gpuWriteBuffer,
+                        buffer: buffers.gpuWrite,
                     },
                 },
             ],
@@ -351,20 +167,20 @@ function createPipelines() {
             },
         ],
     });
-    for(let i = 0; i < FIF; i++) {
+    for(let i = 0; i < GAME_CONSTANTS.FRAMES_IN_FLIGHT; i++) {
         postProcessBindGroup[i] = device.createBindGroup({
             layout: postProcessBindGroupLayout,
             entries: [
                 {
                     binding: 0,
                     resource: {
-                        buffer: indirectBuffer[i],
+                        buffer: buffers.indirect[i],
                     },
                 },
                 {
                     binding: 1,
                     resource: {
-                        buffer: controlBuffer,
+                        buffer: buffers.control,
                     },
                 },
             ],
@@ -405,26 +221,26 @@ function createPipelines() {
             },
         ],
     });
-    for(let i = 0; i < FIF; i++) {
+    for(let i = 0; i < GAME_CONSTANTS.FRAMES_IN_FLIGHT; i++) {
         preProcessBindGroup[i] = device.createBindGroup({
             layout: preProcessBindGroupLayout,
             entries: [
                 {
                     binding: 0,
                     resource: {
-                        buffer: indirectBuffer[i],
+                        buffer: buffers.indirect[i],
                     },
                 },
                 {
                     binding: 1,
                     resource: {
-                        buffer: controlBuffer,
+                        buffer: buffers.control,
                     },
                 },
                 {
                     binding: 2,
                     resource: {
-                        buffer: gpuWriteBuffer,
+                        buffer: buffers.gpuWrite,
                     },
                 },
             ],
@@ -472,19 +288,19 @@ function createPipelines() {
             {
                 binding: 0,
                 resource: {
-                    buffer: projectileBuffer,
+                    buffer: buffers.projectile,
                 },
             },
             {
                 binding: 1,
                 resource: {
-                    buffer: uniformBuffer,
+                    buffer: buffers.uniform,
                 },
             },
             {
                 binding: 2,
                 resource: {
-                    buffer: controlBuffer,
+                    buffer: buffers.control,
                 },
             },
         ],
@@ -553,50 +369,50 @@ function createPipelines() {
             }
         ],
     });
-    for(let i = 0; i < FIF; i++) {
+    for(let i = 0; i < GAME_CONSTANTS.FRAMES_IN_FLIGHT; i++) {
         projectileBindGroup[i] = device.createBindGroup({
             layout: projectileBindGroupLayout,
             entries: [
                 {
                     binding: 0,
                     resource: {
-                        buffer: projectileBuffer,
+                        buffer: buffers.projectile,
                     },
                 },
                 {
                     binding: 1,
                     resource: {
-                        buffer: uniformBuffer,
+                        buffer: buffers.uniform,
                     },
                 },
                 {
                     binding: 2,
                     resource: {
-                        buffer: controlBuffer,
+                        buffer: buffers.control,
                     },
                 },
                 {
                     binding: 3,
                     resource: {
-                        buffer: hashMapBuffer,
+                        buffer: buffers.hashMap,
                     },
                 },
                 {
                     binding: 4,
                     resource: {
-                        buffer: objectBuffer,
+                        buffer: buffers.object,
                     },
                 },
                 {
                     binding: 5,
                     resource: {
-                        buffer: instanceBuffer[i],
+                        buffer: buffers.instance[i],
                     },
                 },
                 {
                     binding: 6,
                     resource: {
-                        buffer: powerupBuffer,
+                        buffer: buffers.powerup,
                     },
                 },
             ],
@@ -643,19 +459,19 @@ function createPipelines() {
             {
                 binding: 0,
                 resource: {
-                    buffer: objectBuffer,
+                    buffer: buffers.object,
                 },
             },
             {
                 binding: 1,
                 resource: {
-                    buffer: addEnemyBuffer,
+                    buffer: buffers.addEnemy,
                 },
             },
             {
                 binding: 2,
                 resource: {
-                    buffer: controlBuffer,
+                    buffer: buffers.control,
                 },
             },
         ],
@@ -688,7 +504,7 @@ function createPipelines() {
             {
                 binding: 0,
                 resource: {
-                    buffer: hashMapBuffer,
+                    buffer: buffers.hashMap,
                     size: 2048,
                 },
             },
@@ -735,19 +551,19 @@ function createPipelines() {
             {
                 binding: 0,
                 resource: {
-                    buffer: objectBuffer,
+                    buffer: buffers.object,
                 },
             },
             {
                 binding: 1,
                 resource: {
-                    buffer: uniformBuffer,
+                    buffer: buffers.uniform,
                 },
             },
             {
                 binding: 2,
                 resource: {
-                    buffer: hashMapBuffer,
+                    buffer: buffers.hashMap,
                 },
             },
         ],
@@ -802,38 +618,38 @@ function createPipelines() {
             },
         ],
     });
-    for(let i = 0; i < FIF; i++) {
+    for(let i = 0; i < GAME_CONSTANTS.FRAMES_IN_FLIGHT; i++) {
         objectBindGroup[i] = device.createBindGroup({
             layout: computeObjectBindGroupLayout,
             entries: [
                 {
                     binding: 0,
                     resource: {
-                        buffer: objectBuffer,
+                        buffer: buffers.object,
                     },
                 },
                 {
                     binding: 1,
                     resource: {
-                        buffer: instanceBuffer[i],
+                        buffer: buffers.instance[i],
                     },
                 },
                 {
                     binding: 2,
                     resource: {
-                        buffer: uniformBuffer,
+                        buffer: buffers.uniform,
                     },
                 },
                 {
                     binding: 3,
                     resource: {
-                        buffer: controlBuffer,
+                        buffer: buffers.control,
                     },
                 },
                 {
                     binding: 4,
                     resource: {
-                        buffer: hashMapBuffer,
+                        buffer: buffers.hashMap,
                     },
                 },
             ],
@@ -934,14 +750,14 @@ function createPipelines() {
         },
     });
 
-    for(let i = 0; i < FIF; i++) {
+    for(let i = 0; i < GAME_CONSTANTS.FRAMES_IN_FLIGHT; i++) {
         renderBindGroup[i] = device.createBindGroup({
             layout: renderBindGroupLayout,
             entries: [
                 {
                     binding: 0,
                     resource: {
-                        buffer: VPBuffer[i],
+                        buffer: buffers.VP[i],
                     },
                 },
             ],
@@ -1018,7 +834,7 @@ async function initWebGPU() {
     }
 
     resizeCanvas(canvas.width, canvas.height);
-    createBuffers();
+    buffers = createBuffers(device);
     createPipelines();
 
     console.log("WebGPU initialized successfully.");
@@ -1065,14 +881,14 @@ function generateEnemies(n: number, spawnDataFloatView : Float32Array, spawnData
 
 async function debugGpuBuffer(buffer: GPUBuffer, from : number, to: number) {
     // Create a read buffer if it doesn't exist
-  if (!cpuReadBuffer) {
-    cpuReadBuffer = device.createBuffer({
+  if (!buffers.cpuRead) {
+    buffers.cpuRead = device.createBuffer({
       size: (to - from) * 4, // Size in bytes
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
     });
-  } else if (cpuReadBuffer.size < (to - from) * 4) {
-    cpuReadBuffer.destroy();
-    cpuReadBuffer = device.createBuffer({
+  } else if (buffers.cpuRead.size < (to - from) * 4) {
+    buffers.cpuRead.destroy();
+    buffers.cpuRead = device.createBuffer({
       size: (to - from) * 4, // Size in bytes
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
     });
@@ -1081,7 +897,7 @@ async function debugGpuBuffer(buffer: GPUBuffer, from : number, to: number) {
     commandEncoder.copyBufferToBuffer(
       buffer, // source buffer
       from * 4, // source offset in bytes
-      cpuReadBuffer, // destination buffer
+      buffers.cpuRead, // destination buffer
       0, // destination offset
       (to - from) * 4 // size in bytes
     );
@@ -1090,11 +906,11 @@ async function debugGpuBuffer(buffer: GPUBuffer, from : number, to: number) {
     device.queue.submit([commandEncoder.finish()]);
   
     // Map the buffer to read from it
-    await cpuReadBuffer.mapAsync(GPUMapMode.READ);
-    
+    await buffers.cpuRead.mapAsync(GPUMapMode.READ);
+
     // Read the data
-    const mappedRange = cpuReadBuffer.getMappedRange();
-    
+    const mappedRange = buffers.cpuRead.getMappedRange();
+
     // Create appropriate views of the data
     const dataFloat = new Float32Array(mappedRange.slice(0));
     const dataUint = new Uint32Array(mappedRange.slice(0));
@@ -1104,7 +920,7 @@ async function debugGpuBuffer(buffer: GPUBuffer, from : number, to: number) {
     console.log("Buffer data (uint):", dataUint);
     
     // Unmap when done
-    cpuReadBuffer.unmap();
+    buffers.cpuRead.unmap();
 }
 
 function preparePowerupData(effect: number, value : number, mappedRangeWriteUint: Uint32Array, mappedRangeWriteFloat: Float32Array) {
@@ -1143,13 +959,13 @@ function preparePowerupData(effect: number, value : number, mappedRangeWriteUint
 function applyPowerup(effect: number, commandEncoder: GPUCommandEncoder, ) {
     switch(effect) {
         case PowerupEffect.FireCount:
-            commandEncoder.copyBufferToBuffer(cpuWriteBuffer, 92, uniformBuffer, 64, 4);
+            commandEncoder.copyBufferToBuffer(buffers.cpuWrite, 92, buffers.uniform, 64, 4);
             break;
         case PowerupEffect.Penetration:
-            commandEncoder.copyBufferToBuffer(cpuWriteBuffer, 92, uniformBuffer, 68, 4);
+            commandEncoder.copyBufferToBuffer(buffers.cpuWrite, 92, buffers.uniform, 68, 4);
             break;
         case PowerupEffect.Damage:
-            commandEncoder.copyBufferToBuffer(cpuWriteBuffer, 92, uniformBuffer, 72, 4);
+            commandEncoder.copyBufferToBuffer(buffers.cpuWrite, 92, buffers.uniform, 72, 4);
             break;
         default:
             break;
@@ -1159,31 +975,31 @@ function applyPowerup(effect: number, commandEncoder: GPUCommandEncoder, ) {
 let powerup : boolean = false;
 
 async function updateUniformBuffer(commandEncoder: GPUCommandEncoder) {
-    await cpuReadBuffer.mapAsync(GPUMapMode.READ);
-    const mappedRangeRead = cpuReadBuffer.getMappedRange();
+    await buffers.cpuRead.mapAsync(GPUMapMode.READ);
+    const mappedRangeRead = buffers.cpuRead.getMappedRange();
     const mappedRangeReadUint = new Uint32Array(mappedRangeRead);
     if(mappedRangeReadUint[0] != 0) {
         gameState.incrementPendingPowerupSelection(mappedRangeReadUint[0]);
     }
-    cpuReadBuffer.unmap();
-    await cpuWriteBuffer.mapAsync(GPUMapMode.WRITE);
-    const mappedRangeWrite = cpuWriteBuffer.getMappedRange();
+    buffers.cpuRead.unmap();
+    await buffers.cpuWrite.mapAsync(GPUMapMode.WRITE);
+    const mappedRangeWrite = buffers.cpuWrite.getMappedRange();
     const mappedRangeWriteFloat = new Float32Array(mappedRangeWrite);
     const mappedRangeWriteUint = new Uint32Array(mappedRangeWrite);
     mappedRangeWriteFloat.set(gameState.getCpuWriteSubArray());
     if(spawnEnemies1) {
-        spawnNum = Math.floor(Math.random() * maxSpawnNum) + 1;
+        spawnNum = Math.floor(Math.random() * GAME_CONSTANTS.MAX_SPAWN_NUM) + 1;
         generateEnemies(spawnNum, mappedRangeWriteFloat, mappedRangeWriteUint);
     } else if(gameState.getPowerupControl() == 3) {
         powerup = true;
         preparePowerupData(gameState.getSelectedPowerupEffect(), gameState.getSelectedPowerupValue(), mappedRangeWriteUint, mappedRangeWriteFloat);
     }
-    cpuWriteBuffer.unmap();
-    commandEncoder.copyBufferToBuffer(gpuWriteBuffer, 0, cpuReadBuffer, 0, 16);
-    commandEncoder.copyBufferToBuffer(cpuWriteBuffer, 0, uniformBuffer, 0, 28);
-    commandEncoder.copyBufferToBuffer(cpuWriteBuffer, 28, VPBuffer[cf], 0, 64);
+    buffers.cpuWrite.unmap();
+    commandEncoder.copyBufferToBuffer(buffers.gpuWrite, 0, buffers.cpuRead, 0, 16);
+    commandEncoder.copyBufferToBuffer(buffers.cpuWrite, 0, buffers.uniform, 0, 28);
+    commandEncoder.copyBufferToBuffer(buffers.cpuWrite, 28, buffers.VP[cf], 0, 64);
     if(spawnEnemies1) {
-        commandEncoder.copyBufferToBuffer(cpuWriteBuffer, 92, addEnemyBuffer, 0, (spawnNum+1) * 16);
+        commandEncoder.copyBufferToBuffer(buffers.cpuWrite, 92, buffers.addEnemy, 0, (spawnNum+1) * 16);
     } else if(powerup) {
         applyPowerup(gameState.getSelectedPowerupEffect(), commandEncoder);
         powerup = false;
@@ -1230,25 +1046,25 @@ async function render() {
     const powerupPass = commandEncoder.beginComputePass();
     powerupPass.setPipeline(powerupPipeline);
     powerupPass.setBindGroup(0, powerupBindGroup[cf]);
-    powerupPass.dispatchWorkgroupsIndirect(indirectBuffer[cf], 184);
+    powerupPass.dispatchWorkgroupsIndirect(buffers.indirect[cf], 184);
     powerupPass.end();
 
     const computePassObject = commandEncoder.beginComputePass();
     computePassObject.setPipeline(objectMovementPipeline);
     computePassObject.setBindGroup(0, objectBindGroup[cf]);
-    computePassObject.dispatchWorkgroupsIndirect(indirectBuffer[cf], 160);
+    computePassObject.dispatchWorkgroupsIndirect(buffers.indirect[cf], 160);
     computePassObject.end();
 
     const computePassObjectCollision = commandEncoder.beginComputePass();
     computePassObjectCollision.setPipeline(objectCollisionPipeline);
     computePassObjectCollision.setBindGroup(0, objectCollisionBindGroup);
-    computePassObjectCollision.dispatchWorkgroupsIndirect(indirectBuffer[cf], 160);
+    computePassObjectCollision.dispatchWorkgroupsIndirect(buffers.indirect[cf], 160);
     computePassObjectCollision.end();
 
     const computePassProjectile = commandEncoder.beginComputePass();
     computePassProjectile.setPipeline(projectilePipeline);
     computePassProjectile.setBindGroup(0, projectileBindGroup[cf]);
-    computePassProjectile.dispatchWorkgroupsIndirect(indirectBuffer[cf], 172);
+    computePassProjectile.dispatchWorkgroupsIndirect(buffers.indirect[cf], 172);
     computePassProjectile.end();
 
     const computePassResetHash = commandEncoder.beginComputePass();
@@ -1287,11 +1103,11 @@ async function render() {
     const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
     passEncoder.setPipeline(renderPipeline);
     passEncoder.setBindGroup(0, renderBindGroup[cf]);
-    passEncoder.setVertexBuffer(0, vertexBuffer);
-    passEncoder.setIndexBuffer(indexBuffer, 'uint16');
-    passEncoder.setVertexBuffer(1, instanceBuffer[cf]);
+    passEncoder.setVertexBuffer(0, buffers.vertex);
+    passEncoder.setIndexBuffer(buffers.index, 'uint16');
+    passEncoder.setVertexBuffer(1, buffers.instance[cf]);
     for (let i = 0; i < drawNum; i++) {
-        passEncoder.drawIndexedIndirect(indirectBuffer[cf], i * 20);
+        passEncoder.drawIndexedIndirect(buffers.indirect[cf], i * 20);
     }
     passEncoder.end();
     device.queue.submit([commandEncoder.finish()]);
@@ -1318,6 +1134,7 @@ self.addEventListener("message", async (event) => {
 function scheduleNextEnemySpawn() {
     setTimeout(() => {
         spawnEnemies1 = true;
+        console.log("Scheduled next enemy spawn");
         // Schedule the next spawn with a new random interval
         scheduleNextEnemySpawn();
     }, Math.random() * 2000 + 2000);
