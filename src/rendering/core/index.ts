@@ -1,0 +1,1 @@
+export { createCore, type CoreManager } from './core-manager';

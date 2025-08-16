@@ -2,23 +2,16 @@
 /// <reference lib="webworker" />
 
 import { GameStateManager, PowerupEffect, GAME_CONSTANTS } from './game';
-
 import { drawNum, createBuffers, objectTypeData, type Buffers } from './rendering/buffers';
-
 import { type PipelineManagerStruct, createPipelines } from './rendering/pipelines';
+import {type TextureManager, createTextures} from './rendering/texture';
+import {type CoreManager, createCore} from './rendering/core';
 
 let gameState: GameStateManager;
-let device: GPUDevice;
-let context: GPUCanvasContext;
-let canvas: OffscreenCanvas;
-
+let textureManager: TextureManager;
 let buffers: Buffers;
 let pipelineManager: PipelineManagerStruct;
-
-let msaaTexture: GPUTexture;
-let msaaTextureView: GPUTextureView;
-let depthTexture: GPUTexture;
-let depthTextureView: GPUTextureView;
+let coreManager: CoreManager;
 
 let cf: number = 0; //current frame
 let nf: number = 1; //next frame
@@ -31,74 +24,29 @@ let damage: number = GAME_CONSTANTS.DEFAULT_DAMAGE;
 let fireCount: number = GAME_CONSTANTS.DEFAULT_FIRE_COUNT;
 let penetration: number = GAME_CONSTANTS.DEFAULT_PENETRATION;
 
-function createDepthTexture() {
-    depthTexture = device.createTexture({
-        size: [canvas.width, canvas.height],
-        format: 'depth24plus',
-        sampleCount: 4,
-        usage: GPUTextureUsage.RENDER_ATTACHMENT,
-    });
-    depthTextureView = depthTexture.createView();
-}
 
-function createMSAATexture() {
-    const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
-    msaaTexture = device.createTexture({
-        size: [canvas.width, canvas.height],
-        sampleCount: 4, // Enable 4x MSAA
-        format: presentationFormat,
-        usage: GPUTextureUsage.RENDER_ATTACHMENT,
-    });
-    msaaTextureView = msaaTexture.createView();
-}
 
 function resizeCanvas( innerWidth: number, innerHeight: number) {
     //const devicePixelRatio = window.devicePixelRatio || 1;
-    canvas.width = innerWidth;
-    canvas.height = innerHeight;
+    coreManager.canvas.width = innerWidth;
+    coreManager.canvas.height = innerHeight;
     const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
-    context.configure({
-        device: device,
+    coreManager.context.configure({
+        device: coreManager.device,
         format: presentationFormat,
     });
-    createMSAATexture();
-    createDepthTexture();
+    textureManager = createTextures(coreManager.device, coreManager.canvas);
 }
 
-async function initWebGPU() {
-    if (!navigator.gpu) {
-        console.error("WebGPU is not supported in this browser.");
-        return;
+async function initWebGPU(canvas: OffscreenCanvas) {
+    const core = await createCore(canvas);
+    if (!core) {
+        throw new Error("Failed to initialize CoreManager.");
     }
-
-    const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) {
-        console.error("Failed to get GPU adapter.");
-        return;
-    }
-
-    device = await adapter.requestDevice({
-        requiredFeatures: ['indirect-first-instance'],
-    });
-    if (!device) {
-        console.error("Failed to get GPU device.");
-        return;
-    }
-
-    if (!canvas) {
-        console.error("Canvas is not initialized.");
-        return;
-    }
-
-    context = canvas.getContext('webgpu') as GPUCanvasContext;
-    if (!context) {
-        console.error("Failed to get WebGPU context on renderthread");
-        return;
-    }
-
+    coreManager = core;
     resizeCanvas(canvas.width, canvas.height);
-    buffers = createBuffers(device);
-    pipelineManager = createPipelines(device, buffers);
+    buffers = createBuffers(coreManager.device);
+    pipelineManager = createPipelines(coreManager.device, buffers);
 
     console.log("WebGPU initialized successfully.");
 }
@@ -145,18 +93,18 @@ function generateEnemies(n: number, spawnDataFloatView : Float32Array, spawnData
 async function debugGpuBuffer(buffer: GPUBuffer, from : number, to: number) {
     // Create a read buffer if it doesn't exist
   if (!buffers.cpuRead) {
-    buffers.cpuRead = device.createBuffer({
+    buffers.cpuRead = coreManager.device.createBuffer({
       size: (to - from) * 4, // Size in bytes
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
     });
   } else if (buffers.cpuRead.size < (to - from) * 4) {
     buffers.cpuRead.destroy();
-    buffers.cpuRead = device.createBuffer({
+    buffers.cpuRead = coreManager.device.createBuffer({
       size: (to - from) * 4, // Size in bytes
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
     });
   }
-    const commandEncoder = device.createCommandEncoder();
+    const commandEncoder = coreManager.device.createCommandEncoder();
     commandEncoder.copyBufferToBuffer(
       buffer, // source buffer
       from * 4, // source offset in bytes
@@ -166,8 +114,8 @@ async function debugGpuBuffer(buffer: GPUBuffer, from : number, to: number) {
     );
   
     // Submit the command buffer
-    device.queue.submit([commandEncoder.finish()]);
-  
+    coreManager.device.queue.submit([commandEncoder.finish()]);
+
     // Map the buffer to read from it
     await buffers.cpuRead.mapAsync(GPUMapMode.READ);
 
@@ -274,13 +222,8 @@ async function updateUniformBuffer(commandEncoder: GPUCommandEncoder) {
 //let debugtick = 0;
 async function render() {
     nf = (cf + 1) % 2; //next frame
-    // Create a command encoder
-    //debugtick++;
-    //if(debugtick % 500 == 0) {
-    //    await debugGpuBuffer(projectileBuffer,1,4);
-    //}
     
-    const commandEncoder = device.createCommandEncoder();
+    const commandEncoder = coreManager.device.createCommandEncoder();
     await updateUniformBuffer(commandEncoder);
 
     if(spawnEnemies1) {
@@ -345,12 +288,12 @@ async function render() {
     postProcessPass.end();
 
     //render
-    const textureView = context.getCurrentTexture().createView();
+    const textureView = coreManager.context.getCurrentTexture().createView();
 
     const renderPassDescriptor: GPURenderPassDescriptor = {
         colorAttachments: [
             {
-                view: msaaTextureView,
+                view: textureManager.msaaTextureView,
                 resolveTarget: textureView,
                 clearValue: [0.1, 0.1, 0.1, 1.0],
                 loadOp: 'clear',
@@ -358,7 +301,7 @@ async function render() {
             },
         ],
         depthStencilAttachment: {
-            view: depthTextureView,
+            view: textureManager.depthTextureView,
             depthClearValue: 1.0,
             depthLoadOp: 'clear',
             depthStoreOp: 'store',
@@ -375,7 +318,7 @@ async function render() {
         passEncoder.drawIndexedIndirect(buffers.indirect[cf], i * 20);
     }
     passEncoder.end();
-    device.queue.submit([commandEncoder.finish()]);
+    coreManager.device.queue.submit([commandEncoder.finish()]);
 
     self.postMessage({ type: 'frameDone'});
 
@@ -388,9 +331,8 @@ self.addEventListener("message", async (event) => {
     if (event.data.type === 'resize') {
         resizeCanvas(event.data.width, event.data.height);
     } else if (event.data.type === 'init') {
-        canvas = event.data.canvas;
         gameState = GameStateManager.createFromSharedBuffer(event.data.buffer);
-        initWebGPU().then(() => {
+        initWebGPU(event.data.canvas).then(() => {
             render();
         });
     } 

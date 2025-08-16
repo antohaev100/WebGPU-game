@@ -22,7 +22,7 @@ export const GAME_CONSTANTS: GameConstants = {
     
     // Game balance
     DEFAULT_FIRE_RATE: 250,
-    DEFAULT_DAMAGE: 0,
+    DEFAULT_DAMAGE: 50,
     DEFAULT_FIRE_COUNT: 3,
     DEFAULT_PENETRATION: 3,
 } as const;
