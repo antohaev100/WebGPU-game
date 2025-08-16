@@ -1,6 +1,7 @@
 const enemyTypeNum : u32 = 2u;
 const maxEnemyNum : u32 = 1024u;
 const playerRadius : f32 = 0.1;
+const playerDamage : f32 = 0.0;
 
 const borderWidth : f32 = 28.0;
 const borderHeight : f32 = 12.0;
@@ -82,7 +83,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     //---------------collision logic---------------
     let pDst : f32 = length(playerPos - objectPos.current);
     if(pDst < playerRadius + objectType.radius) {
-        objectHp -= 100 * dt;
+        objectHp -= playerDamage * dt;
         objectBuffer.hp[index] = objectHp;
     }
     var hashX : i32 = i32((objectPos.current.x - playerPos.x + borderWidth / 2.0) / hashmapTileWidth);

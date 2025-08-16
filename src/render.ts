@@ -1,769 +1,35 @@
 /// <reference types="@webgpu/types" />
 /// <reference lib="webworker" />
 
-import { GameStateManager, PowerupEffect } from './game/game-state';
+import { GameStateManager, PowerupEffect, GAME_CONSTANTS } from './game';
+
+import { drawNum, createBuffers, objectTypeData, type Buffers } from './rendering/buffers';
+
+import { type PipelineManagerStruct, createPipelines } from './rendering/pipelines';
+
 let gameState: GameStateManager;
-
-import { ShaderManager , SHADER_DESCRIPTORS} from './rendering/shaders';
-const shaderManager = ShaderManager.getInstance();
-
-import { GAME_CONSTANTS } from './game/constants';
-import { drawNum, createBuffers, objectTypeData } from './rendering/buffers';
-import type { Buffers } from './rendering/buffers';
-
-
 let device: GPUDevice;
 let context: GPUCanvasContext;
 let canvas: OffscreenCanvas;
 
-let renderPipeline: GPURenderPipeline;
-let objectMovementPipeline: GPUComputePipeline;
-let objectCollisionPipeline: GPUComputePipeline;
-let resetHashPipeline: GPUComputePipeline;
-let spawnEnemyPipeline: GPUComputePipeline;
-let projectilePipeline: GPUComputePipeline;
-let spawnProjectilePipeline: GPUComputePipeline;
-let preProcessPipeline: GPUComputePipeline;
-let postProcessPipeline: GPUComputePipeline;
-let powerupPipeline: GPUComputePipeline;
-
-let preProcessBindGroup: GPUBindGroup[] = new Array(GAME_CONSTANTS.FRAMES_IN_FLIGHT);
-let postProcessBindGroup: GPUBindGroup[] = new Array(GAME_CONSTANTS.FRAMES_IN_FLIGHT);
-let renderBindGroup: GPUBindGroup[] = new Array(GAME_CONSTANTS.FRAMES_IN_FLIGHT);
-let objectBindGroup: GPUBindGroup[] = new Array(GAME_CONSTANTS.FRAMES_IN_FLIGHT);
-let projectileBindGroup: GPUBindGroup[] = new Array(GAME_CONSTANTS.FRAMES_IN_FLIGHT);
-let powerupBindGroup: GPUBindGroup[] = new Array(GAME_CONSTANTS.FRAMES_IN_FLIGHT);
-let objectCollisionBindGroup: GPUBindGroup;
-let resetHashBindGroup: GPUBindGroup;
-let spawnEnemyBindGroup: GPUBindGroup;
-let spawnProjectileBindGroup: GPUBindGroup;
-
 let buffers: Buffers;
+let pipelineManager: PipelineManagerStruct;
 
 let msaaTexture: GPUTexture;
 let msaaTextureView: GPUTextureView;
 let depthTexture: GPUTexture;
 let depthTextureView: GPUTextureView;
 
-let cf = 0; //current frame
-let nf = 1; //next frame
-let spawnEnemies1 : boolean = false;
-let spawnNum = 0;
-let spawnProjectile : boolean = false;
+let cf: number = 0; //current frame
+let nf: number = 1; //next frame
+let spawnEnemies1: boolean = false;
+let spawnNum: number = 0;
+let spawnProjectile: boolean = false;
 
 let fireRate: number = GAME_CONSTANTS.DEFAULT_FIRE_RATE;
-let damage = GAME_CONSTANTS.DEFAULT_DAMAGE;
-let fireCount = GAME_CONSTANTS.DEFAULT_FIRE_COUNT;
-let penetration = GAME_CONSTANTS.DEFAULT_PENETRATION;
-
-
-
-
-
-function createPipelines() {
-    // ---------------------------POWERUP PIPELINE--------------------------------
-    const powerupBindGroupLayout = device.createBindGroupLayout({
-        entries: [
-            {   // powerup buffer
-                binding: 0,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-            {   // instance buffer
-                binding: 1,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-            {   // uniform buffer
-                binding: 2,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'uniform',
-                },
-            },
-            {   // control buffer
-                binding: 3,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-            {   // gpu write buffer
-                binding: 4,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-        ],
-    });
-    for(let i = 0; i < GAME_CONSTANTS.FRAMES_IN_FLIGHT; i++) {
-        powerupBindGroup[i] = device.createBindGroup({
-            layout: powerupBindGroupLayout,
-            entries: [
-                {
-                    binding: 0,
-                    resource: {
-                        buffer: buffers.powerup,
-                    },
-                },
-                {
-                    binding: 1,
-                    resource: {
-                        buffer: buffers.instance[i],
-                    },
-                },
-                {
-                    binding: 2,
-                    resource: {
-                        buffer: buffers.uniform,
-                    },
-                },
-                {
-                    binding: 3,
-                    resource: {
-                        buffer: buffers.control,
-                    },
-                },
-                {
-                    binding: 4,
-                    resource: {
-                        buffer: buffers.gpuWrite,
-                    },
-                },
-            ],
-        });
-    }
-    powerupPipeline = device.createComputePipeline({
-        layout: device.createPipelineLayout({
-            bindGroupLayouts: [powerupBindGroupLayout],
-        }),
-        compute: {
-            module: shaderManager.getShaderModule('powerup'),
-            entryPoint: 'main',
-        },
-    });
-    
-    //---------------------------POSTPROCESS PIPELINE--------------------------------
-    const postProcessBindGroupLayout = device.createBindGroupLayout({
-        entries: [
-            {   // indirect buffer
-                binding: 0,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-            {   // control buffer
-                binding: 1,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-        ],
-    });
-    for(let i = 0; i < GAME_CONSTANTS.FRAMES_IN_FLIGHT; i++) {
-        postProcessBindGroup[i] = device.createBindGroup({
-            layout: postProcessBindGroupLayout,
-            entries: [
-                {
-                    binding: 0,
-                    resource: {
-                        buffer: buffers.indirect[i],
-                    },
-                },
-                {
-                    binding: 1,
-                    resource: {
-                        buffer: buffers.control,
-                    },
-                },
-            ],
-        });
-    }
-    postProcessPipeline = device.createComputePipeline({
-        layout: device.createPipelineLayout({
-            bindGroupLayouts: [postProcessBindGroupLayout],
-        }),
-        compute: {
-            module: shaderManager.getShaderModule('postProcess'),
-            entryPoint: 'main',
-        },
-    });
-    // ---------------------------PREPROCESS PIPELINE--------------------------------
-    const preProcessBindGroupLayout = device.createBindGroupLayout({
-        entries: [
-            {   // indirect buffer
-                binding: 0,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-            {   // control buffer
-                binding: 1,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-            {   // gpu write buffer
-                binding: 2,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-        ],
-    });
-    for(let i = 0; i < GAME_CONSTANTS.FRAMES_IN_FLIGHT; i++) {
-        preProcessBindGroup[i] = device.createBindGroup({
-            layout: preProcessBindGroupLayout,
-            entries: [
-                {
-                    binding: 0,
-                    resource: {
-                        buffer: buffers.indirect[i],
-                    },
-                },
-                {
-                    binding: 1,
-                    resource: {
-                        buffer: buffers.control,
-                    },
-                },
-                {
-                    binding: 2,
-                    resource: {
-                        buffer: buffers.gpuWrite,
-                    },
-                },
-            ],
-        });
-    }
-    preProcessPipeline = device.createComputePipeline({
-        layout: device.createPipelineLayout({
-            bindGroupLayouts: [preProcessBindGroupLayout],
-        }),
-        compute: {
-            module: shaderManager.getShaderModule('preProcess'),
-            entryPoint: 'main',
-        },
-    });
-
-    // ---------------------------SPAWN PROJECTILE PIPELINE--------------------------------
-    const spawnProjectileBindGroupLayout = device.createBindGroupLayout({
-        entries: [
-            {   // projectile buffer
-                binding: 0,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-            {   // uniform buffer
-                binding: 1,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'uniform',
-                },
-            },
-            {   // control buffer
-                binding: 2,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-        ],
-    });
-    spawnProjectileBindGroup = device.createBindGroup({
-        layout: spawnProjectileBindGroupLayout,
-        entries: [
-            {
-                binding: 0,
-                resource: {
-                    buffer: buffers.projectile,
-                },
-            },
-            {
-                binding: 1,
-                resource: {
-                    buffer: buffers.uniform,
-                },
-            },
-            {
-                binding: 2,
-                resource: {
-                    buffer: buffers.control,
-                },
-            },
-        ],
-    });
-    spawnProjectilePipeline = device.createComputePipeline({
-        layout: device.createPipelineLayout({
-            bindGroupLayouts: [spawnProjectileBindGroupLayout],
-        }),
-        compute: {
-            module: shaderManager.getShaderModule('spawnProjectile'),
-            entryPoint: 'main',
-        },
-    });
-
-    // ---------------------------PROJECTILE PIPELINE--------------------------------
-    const projectileBindGroupLayout = device.createBindGroupLayout({
-        entries: [
-            {   // projectile buffer
-                binding: 0,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-            {   // uniform buffer
-                binding: 1,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'uniform',
-                },
-            },
-            {   // control buffer
-                binding: 2,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-            {   // hashmap buffer
-                binding: 3,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'read-only-storage',
-                },
-            },
-            {   // object buffer
-                binding: 4,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-            {   // instance buffer
-                binding: 5,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-            {   // powerup buffer
-                binding: 6,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            }
-        ],
-    });
-    for(let i = 0; i < GAME_CONSTANTS.FRAMES_IN_FLIGHT; i++) {
-        projectileBindGroup[i] = device.createBindGroup({
-            layout: projectileBindGroupLayout,
-            entries: [
-                {
-                    binding: 0,
-                    resource: {
-                        buffer: buffers.projectile,
-                    },
-                },
-                {
-                    binding: 1,
-                    resource: {
-                        buffer: buffers.uniform,
-                    },
-                },
-                {
-                    binding: 2,
-                    resource: {
-                        buffer: buffers.control,
-                    },
-                },
-                {
-                    binding: 3,
-                    resource: {
-                        buffer: buffers.hashMap,
-                    },
-                },
-                {
-                    binding: 4,
-                    resource: {
-                        buffer: buffers.object,
-                    },
-                },
-                {
-                    binding: 5,
-                    resource: {
-                        buffer: buffers.instance[i],
-                    },
-                },
-                {
-                    binding: 6,
-                    resource: {
-                        buffer: buffers.powerup,
-                    },
-                },
-            ],
-        });
-    }
-    projectilePipeline = device.createComputePipeline({
-        layout: device.createPipelineLayout({
-            bindGroupLayouts: [projectileBindGroupLayout],
-        }),
-        compute: {
-            module: shaderManager.getShaderModule('projectile'),
-            entryPoint: 'main',
-        },
-    });
-    // ---------------------------SPAWN ENEMY PIPELINE--------------------------------
-    const spawnEnemyBindGroupLayout = device.createBindGroupLayout({
-        entries: [
-            {   // object buffer
-                binding: 0,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-            {   // add enemy buffer
-                binding: 1,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'uniform',
-                },
-            },
-            {   // control buffer
-                binding: 2,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-        ],
-    });
-    spawnEnemyBindGroup = device.createBindGroup({
-        layout: spawnEnemyBindGroupLayout,
-        entries: [
-            {
-                binding: 0,
-                resource: {
-                    buffer: buffers.object,
-                },
-            },
-            {
-                binding: 1,
-                resource: {
-                    buffer: buffers.addEnemy,
-                },
-            },
-            {
-                binding: 2,
-                resource: {
-                    buffer: buffers.control,
-                },
-            },
-        ],
-    });
-    
-    spawnEnemyPipeline = device.createComputePipeline({
-        layout: device.createPipelineLayout({
-            bindGroupLayouts: [spawnEnemyBindGroupLayout],
-        }),
-        compute: {
-            module: shaderManager.getShaderModule('spawnEnemy'),
-            entryPoint: 'main',
-        },
-    });
-    // ---------------------------RESET HASH PIPELINE--------------------------------
-    const resetHashBindGroupLayout = device.createBindGroupLayout({
-        entries: [
-            {   // hashmap buffer
-                binding: 0,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-        ],
-    });
-    resetHashBindGroup = device.createBindGroup({
-        layout: resetHashBindGroupLayout,
-        entries: [
-            {
-                binding: 0,
-                resource: {
-                    buffer: buffers.hashMap,
-                    size: 2048,
-                },
-            },
-        ],
-    });
-    resetHashPipeline = device.createComputePipeline({
-        layout: device.createPipelineLayout({
-            bindGroupLayouts: [resetHashBindGroupLayout],
-        }),
-        compute: {
-            module: shaderManager.getShaderModule('resetHash'),
-            entryPoint: 'main',
-        },
-    });
-    // ---------------------------OBJECT COLLISION PIPELINE--------------------------------
-    const objectCollisionBindGroupLayout = device.createBindGroupLayout({
-        entries: [
-            {   // object buffer
-                binding: 0,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-            {   // uniform buffer
-                binding: 1,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'uniform',
-                },
-            },
-            {   // hashmap buffer
-                binding: 2,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'read-only-storage',
-                },
-            },
-        ],
-    });
-    objectCollisionBindGroup = device.createBindGroup({
-        layout: objectCollisionBindGroupLayout,
-        entries: [
-            {
-                binding: 0,
-                resource: {
-                    buffer: buffers.object,
-                },
-            },
-            {
-                binding: 1,
-                resource: {
-                    buffer: buffers.uniform,
-                },
-            },
-            {
-                binding: 2,
-                resource: {
-                    buffer: buffers.hashMap,
-                },
-            },
-        ],
-    });
-    objectCollisionPipeline = device.createComputePipeline({
-        layout: device.createPipelineLayout({
-            bindGroupLayouts: [objectCollisionBindGroupLayout],
-        }),
-        compute: {
-            module: shaderManager.getShaderModule('objectCollision'),
-            entryPoint: 'main',
-        },
-    });
-
-    //---------------------------OBJECT COMPUTE PIPELINE--------------------------------
-    const computeObjectBindGroupLayout = device.createBindGroupLayout({
-        entries: [
-            {   // Object buffer
-                binding: 0,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-            {   // instance buffer
-                binding: 1,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-            {   // uniform buffer
-                binding: 2,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'uniform',
-                },
-            },
-            {   // control buffer
-                binding: 3,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-            {   // hashmap buffer
-                binding: 4,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: {
-                    type: 'storage',
-                },
-            },
-        ],
-    });
-    for(let i = 0; i < GAME_CONSTANTS.FRAMES_IN_FLIGHT; i++) {
-        objectBindGroup[i] = device.createBindGroup({
-            layout: computeObjectBindGroupLayout,
-            entries: [
-                {
-                    binding: 0,
-                    resource: {
-                        buffer: buffers.object,
-                    },
-                },
-                {
-                    binding: 1,
-                    resource: {
-                        buffer: buffers.instance[i],
-                    },
-                },
-                {
-                    binding: 2,
-                    resource: {
-                        buffer: buffers.uniform,
-                    },
-                },
-                {
-                    binding: 3,
-                    resource: {
-                        buffer: buffers.control,
-                    },
-                },
-                {
-                    binding: 4,
-                    resource: {
-                        buffer: buffers.hashMap,
-                    },
-                },
-            ],
-        });
-    }
-
-    objectMovementPipeline = device.createComputePipeline({
-        layout: device.createPipelineLayout({
-            bindGroupLayouts: [computeObjectBindGroupLayout],
-        }),
-        compute: {
-            module: shaderManager.getShaderModule('objectMovement'),
-            entryPoint: 'main',
-        },
-    });
-
-    // ---------------------------RENDER PIPELINE--------------------------------
-    const renderBindGroupLayout = device.createBindGroupLayout({
-        entries: [
-            {   // VP buffer
-                binding: 0,
-                visibility: GPUShaderStage.VERTEX,
-                buffer: {
-                    type: 'uniform',
-                },
-            },
-        ],
-    });
-
-    // Create pipeline
-    renderPipeline = device.createRenderPipeline({
-        layout: device.createPipelineLayout({
-            bindGroupLayouts: [renderBindGroupLayout],
-        }),
-        vertex: {
-            module: shaderManager.getShaderModule('vertex'),
-            entryPoint: 'main',
-            buffers: [
-                {
-                    arrayStride: 9 * 4,
-                    attributes: [
-                        {
-                            shaderLocation: 0,
-                            offset: 0,
-                            format: 'float32x3', // Position
-                        },
-                        {
-                            shaderLocation: 1,
-                            offset: 3 * 4,
-                            format: 'float32x3', // Color
-                        },
-                        {
-                            shaderLocation: 2,
-                            offset: 6 * 4,
-                            format: 'float32x3', // Normal
-                        },
-                    ],
-                },
-                {
-                    arrayStride: 6 * 4,
-                    stepMode: 'instance',
-                    attributes: [
-                        {
-                            shaderLocation: 3,
-                            offset: 0,
-                            format: 'float32x2', // Model position
-                        },
-                        {
-                            shaderLocation: 4,
-                            offset: 2 * 4,
-                            format: 'float32x4', // Model rotation
-                        },
-                    ],
-                },
-            ],
-        },
-        fragment: {
-            module: shaderManager.getShaderModule('fragment'),
-            entryPoint: 'main',
-            targets: [
-                {
-                    format: navigator.gpu.getPreferredCanvasFormat(),
-                },
-            ],
-        },
-        primitive: {
-            topology: 'triangle-list',
-            cullMode: 'back',
-            frontFace: 'ccw',
-        },
-        depthStencil: {
-            format: 'depth24plus',
-            depthWriteEnabled: true,
-            depthCompare: 'less',
-        },
-        multisample: {
-            count: 4,
-        },
-    });
-
-    for(let i = 0; i < GAME_CONSTANTS.FRAMES_IN_FLIGHT; i++) {
-        renderBindGroup[i] = device.createBindGroup({
-            layout: renderBindGroupLayout,
-            entries: [
-                {
-                    binding: 0,
-                    resource: {
-                        buffer: buffers.VP[i],
-                    },
-                },
-            ],
-        });
-    }
-}
+let damage: number = GAME_CONSTANTS.DEFAULT_DAMAGE;
+let fireCount: number = GAME_CONSTANTS.DEFAULT_FIRE_COUNT;
+let penetration: number = GAME_CONSTANTS.DEFAULT_PENETRATION;
 
 function createDepthTexture() {
     depthTexture = device.createTexture({
@@ -819,9 +85,6 @@ async function initWebGPU() {
         return;
     }
 
-    shaderManager.initialize(device);
-    shaderManager.registerShaders(SHADER_DESCRIPTORS);
-
     if (!canvas) {
         console.error("Canvas is not initialized.");
         return;
@@ -835,7 +98,7 @@ async function initWebGPU() {
 
     resizeCanvas(canvas.width, canvas.height);
     buffers = createBuffers(device);
-    createPipelines();
+    pipelineManager = createPipelines(device, buffers);
 
     console.log("WebGPU initialized successfully.");
 }
@@ -988,7 +251,8 @@ async function updateUniformBuffer(commandEncoder: GPUCommandEncoder) {
     const mappedRangeWriteUint = new Uint32Array(mappedRangeWrite);
     mappedRangeWriteFloat.set(gameState.getCpuWriteSubArray());
     if(spawnEnemies1) {
-        spawnNum = Math.floor(Math.random() * GAME_CONSTANTS.MAX_SPAWN_NUM) + 1;
+        //spawnNum = Math.floor(Math.random() * GAME_CONSTANTS.MAX_SPAWN_NUM) + 1; //DEBUG
+        spawnNum = GAME_CONSTANTS.MAX_SPAWN_NUM;
         generateEnemies(spawnNum, mappedRangeWriteFloat, mappedRangeWriteUint);
     } else if(gameState.getPowerupControl() == 3) {
         powerup = true;
@@ -1020,9 +284,10 @@ async function render() {
     await updateUniformBuffer(commandEncoder);
 
     if(spawnEnemies1) {
+        //await debugGpuBuffer(buffers.control, 0, 1);
         const spawnEnemyPass = commandEncoder.beginComputePass();
-        spawnEnemyPass.setPipeline(spawnEnemyPipeline);
-        spawnEnemyPass.setBindGroup(0, spawnEnemyBindGroup);
+        spawnEnemyPass.setPipeline(pipelineManager.spawnEnemy.pipe);
+        spawnEnemyPass.setBindGroup(0, pipelineManager.spawnEnemy.bind);
         spawnEnemyPass.dispatchWorkgroups(1);
         spawnEnemyPass.end();
         spawnEnemies1 = false;
@@ -1030,52 +295,52 @@ async function render() {
 
     if(spawnProjectile) {
         const spawnProjectilePass = commandEncoder.beginComputePass();
-        spawnProjectilePass.setPipeline(spawnProjectilePipeline);
-        spawnProjectilePass.setBindGroup(0, spawnProjectileBindGroup);
+        spawnProjectilePass.setPipeline(pipelineManager.spawnProjectile.pipe);
+        spawnProjectilePass.setBindGroup(0, pipelineManager.spawnProjectile.bind);
         spawnProjectilePass.dispatchWorkgroups(1);
         spawnProjectilePass.end();
         spawnProjectile = false;
     }
 
     const preProcessPass = commandEncoder.beginComputePass();
-    preProcessPass.setPipeline(preProcessPipeline);
-    preProcessPass.setBindGroup(0, preProcessBindGroup[cf]);
+    preProcessPass.setPipeline(pipelineManager.preProcess.pipe);
+    preProcessPass.setBindGroup(0, pipelineManager.preProcess.bind[cf]);
     preProcessPass.dispatchWorkgroups(1);
     preProcessPass.end();
 
     const powerupPass = commandEncoder.beginComputePass();
-    powerupPass.setPipeline(powerupPipeline);
-    powerupPass.setBindGroup(0, powerupBindGroup[cf]);
+    powerupPass.setPipeline(pipelineManager.powerup.pipe);
+    powerupPass.setBindGroup(0, pipelineManager.powerup.bind[cf]);
     powerupPass.dispatchWorkgroupsIndirect(buffers.indirect[cf], 184);
     powerupPass.end();
 
     const computePassObject = commandEncoder.beginComputePass();
-    computePassObject.setPipeline(objectMovementPipeline);
-    computePassObject.setBindGroup(0, objectBindGroup[cf]);
+    computePassObject.setPipeline(pipelineManager.objectMovement.pipe);
+    computePassObject.setBindGroup(0, pipelineManager.objectMovement.bind[cf]);
     computePassObject.dispatchWorkgroupsIndirect(buffers.indirect[cf], 160);
     computePassObject.end();
 
     const computePassObjectCollision = commandEncoder.beginComputePass();
-    computePassObjectCollision.setPipeline(objectCollisionPipeline);
-    computePassObjectCollision.setBindGroup(0, objectCollisionBindGroup);
+    computePassObjectCollision.setPipeline(pipelineManager.objectCollision.pipe);
+    computePassObjectCollision.setBindGroup(0, pipelineManager.objectCollision.bind);
     computePassObjectCollision.dispatchWorkgroupsIndirect(buffers.indirect[cf], 160);
     computePassObjectCollision.end();
 
     const computePassProjectile = commandEncoder.beginComputePass();
-    computePassProjectile.setPipeline(projectilePipeline);
-    computePassProjectile.setBindGroup(0, projectileBindGroup[cf]);
+    computePassProjectile.setPipeline(pipelineManager.projectile.pipe);
+    computePassProjectile.setBindGroup(0, pipelineManager.projectile.bind[cf]);
     computePassProjectile.dispatchWorkgroupsIndirect(buffers.indirect[cf], 172);
     computePassProjectile.end();
 
     const computePassResetHash = commandEncoder.beginComputePass();
-    computePassResetHash.setPipeline(resetHashPipeline);
-    computePassResetHash.setBindGroup(0, resetHashBindGroup);
+    computePassResetHash.setPipeline(pipelineManager.resetHash.pipe);
+    computePassResetHash.setBindGroup(0, pipelineManager.resetHash.bind);
     computePassResetHash.dispatchWorkgroups(1);
     computePassResetHash.end();
 
     const postProcessPass = commandEncoder.beginComputePass();
-    postProcessPass.setPipeline(postProcessPipeline);
-    postProcessPass.setBindGroup(0, postProcessBindGroup[cf]);
+    postProcessPass.setPipeline(pipelineManager.postProcess.pipe);
+    postProcessPass.setBindGroup(0, pipelineManager.postProcess.bind[cf]);
     postProcessPass.dispatchWorkgroups(1);
     postProcessPass.end();
 
@@ -1101,8 +366,8 @@ async function render() {
     };
 
     const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
-    passEncoder.setPipeline(renderPipeline);
-    passEncoder.setBindGroup(0, renderBindGroup[cf]);
+    passEncoder.setPipeline(pipelineManager.render.pipe);
+    passEncoder.setBindGroup(0, pipelineManager.render.bind[cf]);
     passEncoder.setVertexBuffer(0, buffers.vertex);
     passEncoder.setIndexBuffer(buffers.index, 'uint16');
     passEncoder.setVertexBuffer(1, buffers.instance[cf]);
@@ -1134,10 +399,9 @@ self.addEventListener("message", async (event) => {
 function scheduleNextEnemySpawn() {
     setTimeout(() => {
         spawnEnemies1 = true;
-        console.log("Scheduled next enemy spawn");
         // Schedule the next spawn with a new random interval
         scheduleNextEnemySpawn();
-    }, Math.random() * 2000 + 2000);
+    }, /*Math.random() * 2000 + 2000*/ 1000); //DEBUG
 }
 
 function scheduleNextProjectileSpawn() {

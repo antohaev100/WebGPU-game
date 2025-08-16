@@ -1,4 +1,16 @@
-export const GAME_CONSTANTS = {
+interface GameConstants {
+    MAX_ENEMY_NUM: number;
+    MAX_PROJECTILE_NUM: number;
+    MAX_POWERUP_NUM: number;
+    MAX_SPAWN_NUM: number;
+    FRAMES_IN_FLIGHT: number;
+    DEFAULT_FIRE_RATE: number;
+    DEFAULT_DAMAGE: number;
+    DEFAULT_FIRE_COUNT: number;
+    DEFAULT_PENETRATION: number;
+}
+
+export const GAME_CONSTANTS: GameConstants = {
     // Buffer sizes
     MAX_ENEMY_NUM: 1024,
     MAX_PROJECTILE_NUM: 1024,
@@ -10,9 +22,8 @@ export const GAME_CONSTANTS = {
     
     // Game balance
     DEFAULT_FIRE_RATE: 250,
-    DEFAULT_DAMAGE: 50,
+    DEFAULT_DAMAGE: 0,
     DEFAULT_FIRE_COUNT: 3,
     DEFAULT_PENETRATION: 3,
 } as const;
 
-export type GameConstants = typeof GAME_CONSTANTS;

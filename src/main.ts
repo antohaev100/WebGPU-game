@@ -30,8 +30,8 @@ async function initializeRenderThread() {
     renderThread.postMessage({type: 'init', canvas: offscreenCanvas, buffer: gameState.getSharedBuffer()}, [offscreenCanvas]);
 
     window.addEventListener('resize', () => {
-        gameState.setWidthHeightRatio(canvasElement.clientWidth / canvasElement.clientHeight);
-        renderThread.postMessage({ type: 'resize', width: canvasElement.clientWidth, height: canvasElement.clientHeight });
+        gameState.setWidthHeightRatio(window.innerWidth / window.innerHeight);
+        renderThread.postMessage({ type: 'resize', width: window.innerWidth, height: window.innerHeight });
     });
 
     let previousTimestamp = performance.now();

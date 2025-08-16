@@ -5,52 +5,49 @@ const enemyTypeNum = objectTypeData.length / 4;
 import { GAME_CONSTANTS } from '../../game/constants';
 
 export interface Buffers {
-    vertex: GPUBuffer;
-    index: GPUBuffer;
-
-    VP: GPUBuffer[];
-    cpuWrite: GPUBuffer;
-    gpuWrite: GPUBuffer;
-    cpuRead: GPUBuffer;
-
-    object: GPUBuffer;
-    addEnemy: GPUBuffer;
-    hashMap: GPUBuffer;
-    uniform: GPUBuffer;
-    indirect: GPUBuffer[];
-    instance: GPUBuffer[];
+    vertex:     GPUBuffer;
+    index:      GPUBuffer;
+    VP:         GPUBuffer[];
+    cpuWrite:   GPUBuffer;
+    gpuWrite:   GPUBuffer;
+    cpuRead:    GPUBuffer;
+    object:     GPUBuffer;
+    addEnemy:   GPUBuffer;
+    hashMap:    GPUBuffer;
+    uniform:    GPUBuffer;
+    indirect:   GPUBuffer[];
+    instance:   GPUBuffer[];
     projectile: GPUBuffer;
-    control: GPUBuffer;
-    powerup: GPUBuffer;
+    control:    GPUBuffer;
+    powerup:    GPUBuffer;
 }
 
 export function createBuffers(device: GPUDevice): Buffers { 
         const buffers: Buffers = {
-        vertex: null as any,
-        index: null as any,
-        VP: new Array(GAME_CONSTANTS.FRAMES_IN_FLIGHT),
-        cpuWrite: null as any,
-        gpuWrite: null as any,
-        cpuRead: null as any,
-        object: null as any,
-        addEnemy: null as any,
-        hashMap: null as any,
-        uniform: null as any,
-        indirect: new Array(GAME_CONSTANTS.FRAMES_IN_FLIGHT),
-        instance: new Array(GAME_CONSTANTS.FRAMES_IN_FLIGHT),
-        projectile: null as any,
-        control: null as any,
-        powerup: null as any,
+        vertex:     {} as GPUBuffer,
+        index:      {} as GPUBuffer,
+        VP:         new Array(GAME_CONSTANTS.FRAMES_IN_FLIGHT),
+        cpuWrite:   {} as GPUBuffer,
+        gpuWrite:   {} as GPUBuffer,
+        cpuRead:    {} as GPUBuffer,
+        object:     {} as GPUBuffer,
+        addEnemy:   {} as GPUBuffer,
+        hashMap:    {} as GPUBuffer,
+        uniform:    {} as GPUBuffer,
+        indirect:   new Array(GAME_CONSTANTS.FRAMES_IN_FLIGHT),
+        instance:   new Array(GAME_CONSTANTS.FRAMES_IN_FLIGHT),
+        projectile: {} as GPUBuffer,
+        control:    {} as GPUBuffer,
+        powerup:    {} as GPUBuffer,
     };
     buffers.cpuRead = device.createBuffer({
         size: 4 * 4, // 4 int
         usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
         mappedAtCreation: true,
     });
-    const mappedReadData = buffers.cpuRead.getMappedRange();
-    const mappedReadDataUint = new Uint32Array(mappedReadData);
-    mappedReadDataUint.fill(0);
+    new Uint32Array(buffers.cpuRead.getMappedRange()).fill(0);
     buffers.cpuRead.unmap();
+    
     buffers.gpuWrite = device.createBuffer({
         size: 4 * 4, // 4 int
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
@@ -68,7 +65,7 @@ export function createBuffers(device: GPUDevice): Buffers {
 
     buffers.control = device.createBuffer({
         size: 64, // 4x4 matrix
-        usage: GPUBufferUsage.STORAGE,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
         mappedAtCreation: true,
     });
     const mappedControlData = buffers.control.getMappedRange();
