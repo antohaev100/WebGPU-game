@@ -27,3 +27,14 @@ export const GAME_CONSTANTS: GameConstants = {
     DEFAULT_PENETRATION: 3,
 } as const;
 
+interface EnemyTypeStruct {
+    damage: number;
+    radius: number;
+    speed: number;
+    maxHp: number;
+}
+
+export const enemyTypes: EnemyTypeStruct[] = [
+    { damage: 100, radius: 0.1, speed: 3, maxHp: 100 }, //enemy1
+    { damage: 200, radius: 0.2, speed: 2, maxHp: 200 }, //enemy2
+];

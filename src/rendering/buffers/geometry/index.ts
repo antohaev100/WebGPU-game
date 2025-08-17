@@ -1,0 +1,1 @@
+export { vertexBufferData, indexBufferData, indirectData, drawNum } from './geometry-manager';

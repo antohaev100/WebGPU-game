@@ -1,8 +1,9 @@
 /// <reference types="@webgpu/types" />
 
-import { objectTypeData, indirectData, vertexBufferData, indexBufferData } from './geometry';
-const enemyTypeNum = objectTypeData.length / 4;
-import { GAME_CONSTANTS } from '../../game/constants';
+import { indirectData, vertexBufferData, indexBufferData } from './geometry';
+import { GAME_CONSTANTS, enemyTypes} from '../../game';
+const enemyTypeNum = enemyTypes.length;
+
 
 export interface Buffers {
     vertex:     GPUBuffer;
@@ -176,17 +177,27 @@ export function createBuffers(device: GPUDevice): Buffers {
     mappedIndexData.set(indexBufferData, 0);
     buffers.index.unmap();
 
+    const enemyTypesData = new Float32Array(enemyTypes.length * 4);
+    for (let i = 0; i < enemyTypes.length; i++) {
+        enemyTypesData.set([
+            enemyTypes[i].damage,
+            enemyTypes[i].radius,
+            enemyTypes[i].speed,
+            enemyTypes[i].maxHp,
+        ], i * 4);
+    }
+
     buffers.uniform = device.createBuffer({
-        size: 8 * 4 + objectTypeData.byteLength + 8 * 4,
+        size: 8 * 4 + enemyTypesData.byteLength + 8 * 4,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         mappedAtCreation: true,
     });
     const mappedUniformData = buffers.uniform.getMappedRange();
     const mappedUniformDataFloat = new Float32Array(mappedUniformData);
     const mappedUniformDataUint = new Uint32Array(mappedUniformData);
-    mappedUniformDataFloat.set(objectTypeData, 8);
-    mappedUniformDataUint.set([GAME_CONSTANTS.DEFAULT_FIRE_COUNT, GAME_CONSTANTS.DEFAULT_PENETRATION],8 + objectTypeData.length);
-    mappedUniformDataFloat.set([GAME_CONSTANTS.DEFAULT_DAMAGE, 20, 0.04], 8 + objectTypeData.length + 2);
+    mappedUniformDataFloat.set(enemyTypesData, 8);
+    mappedUniformDataUint.set([GAME_CONSTANTS.DEFAULT_FIRE_COUNT, GAME_CONSTANTS.DEFAULT_PENETRATION],8 + enemyTypesData.length);
+    mappedUniformDataFloat.set([GAME_CONSTANTS.DEFAULT_DAMAGE, 20, 0.04], 8 + enemyTypesData.length + 2);
     buffers.uniform.unmap();
     return buffers;
 }

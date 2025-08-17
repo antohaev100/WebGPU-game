@@ -1,3 +1,2 @@
-export { GameStateManager, PowerupEffect } from './game-state';
-export type { GameState } from './game-state';
-export { GAME_CONSTANTS } from './constants';
+export { GameStateManager, PowerupEffect, type GameState } from './game-state';
+export { GAME_CONSTANTS, enemyTypes } from './constants';

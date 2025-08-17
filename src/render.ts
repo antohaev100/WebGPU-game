@@ -1,8 +1,9 @@
 /// <reference types="@webgpu/types" />
 /// <reference lib="webworker" />
 
-import { GameStateManager, PowerupEffect, GAME_CONSTANTS } from './game';
-import { drawNum, createBuffers, objectTypeData, type Buffers } from './rendering/buffers';
+import { debugLog } from './utils/debug'
+import { GameStateManager, PowerupEffect, GAME_CONSTANTS, enemyTypes } from './game';
+import { drawNum, createBuffers, type Buffers } from './rendering/buffers';
 import { type PipelineManagerStruct, createPipelines } from './rendering/pipelines';
 import {type TextureManager, createTextures} from './rendering/texture';
 import {type CoreManager, createCore} from './rendering/core';
@@ -48,7 +49,7 @@ async function initWebGPU(canvas: OffscreenCanvas) {
     buffers = createBuffers(coreManager.device);
     pipelineManager = createPipelines(coreManager.device, buffers);
 
-    console.log("WebGPU initialized successfully.");
+    debugLog("WebGPU initialized successfully.");
 }
 
 
@@ -82,7 +83,7 @@ function generateEnemies(n: number, spawnDataFloatView : Float32Array, spawnData
         let pos = randomSpawnPosition(); //hp index pos
         let index = i * 4 + 27;
         const type = Math.random() < 0.5 ? 0 : 1;
-        const hp = objectTypeData[type * 4 + 3];
+        const hp = enemyTypes[type].maxHp;
         spawnDataFloatView[index] = hp; 
         spawnDataUintView[index + 1] = type;
         spawnDataFloatView[index + 2] = pos[0];
@@ -90,52 +91,8 @@ function generateEnemies(n: number, spawnDataFloatView : Float32Array, spawnData
     }
 }
 
-async function debugGpuBuffer(buffer: GPUBuffer, from : number, to: number) {
-    // Create a read buffer if it doesn't exist
-  if (!buffers.cpuRead) {
-    buffers.cpuRead = coreManager.device.createBuffer({
-      size: (to - from) * 4, // Size in bytes
-      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
-    });
-  } else if (buffers.cpuRead.size < (to - from) * 4) {
-    buffers.cpuRead.destroy();
-    buffers.cpuRead = coreManager.device.createBuffer({
-      size: (to - from) * 4, // Size in bytes
-      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
-    });
-  }
-    const commandEncoder = coreManager.device.createCommandEncoder();
-    commandEncoder.copyBufferToBuffer(
-      buffer, // source buffer
-      from * 4, // source offset in bytes
-      buffers.cpuRead, // destination buffer
-      0, // destination offset
-      (to - from) * 4 // size in bytes
-    );
-  
-    // Submit the command buffer
-    coreManager.device.queue.submit([commandEncoder.finish()]);
-
-    // Map the buffer to read from it
-    await buffers.cpuRead.mapAsync(GPUMapMode.READ);
-
-    // Read the data
-    const mappedRange = buffers.cpuRead.getMappedRange();
-
-    // Create appropriate views of the data
-    const dataFloat = new Float32Array(mappedRange.slice(0));
-    const dataUint = new Uint32Array(mappedRange.slice(0));
-    
-    // Log both representations of the data
-    console.log("Buffer data (float):", dataFloat);
-    console.log("Buffer data (uint):", dataUint);
-    
-    // Unmap when done
-    buffers.cpuRead.unmap();
-}
-
 function preparePowerupData(effect: number, value : number, mappedRangeWriteUint: Uint32Array, mappedRangeWriteFloat: Float32Array) {
-    console.log("effect: " + effect + " value: " + value);
+    debugLog("effect: " + effect + " value: " + value);
 
     switch(effect) {
         case PowerupEffect.FireCount:

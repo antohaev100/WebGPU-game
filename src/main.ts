@@ -1,10 +1,11 @@
 /// <reference types="@webgpu/types" />
-
+import { debugLog } from './utils/debug';
 import { GameStateManager, PowerupEffect } from './game/game-state';
 const gameState = GameStateManager.getInstance();
 
 
-async function initializeRenderThread() {    
+async function initializeRenderThread() {
+    debugLog("Initializing render thread");
     // Create an HTMLCanvasElement to display the result in the DOM
     const canvasElement = document.getElementById('myCanvas');
     if (!canvasElement) {
@@ -47,7 +48,7 @@ async function initializeRenderThread() {
             if(pendingPowerupSelection != 0 && powerupControl == 0) {
                 showPowerupOptions();
             } else if(powerupControl == 2) {
-                console.log("Powerup selected: " + powerupSelected);
+                debugLog("Powerup selected: " + powerupSelected);
                 selectPowerup();
             }
 
@@ -68,9 +69,11 @@ async function initializeRenderThread() {
             }
         } 
     };
+    debugLog("Render thread initialized");
 }
 
-function initializeInputThread() {    
+function initializeInputThread() {
+    debugLog("Initializing input thread");
     const inputThread = new Worker(new URL('./input.ts', import.meta.url), { type: 'module' });
 
     inputThread.postMessage({ type: 'init', buffer: gameState.getSharedBuffer() });
@@ -81,6 +84,7 @@ function initializeInputThread() {
     window.addEventListener('keyup', (event) => {
         inputThread.postMessage({ type: 'keyup', key: event.key });
     });
+    debugLog("Input thread initialized");
 }
 
 // Global variables for powerup management
@@ -94,6 +98,7 @@ let selectionTimeMs = 5000; // 5 seconds to select
 
 // Initialize powerup UI elements
 function initPowerupUI() {
+    debugLog("Initializing powerup UI");
     optionsElement = document.getElementById('powerup-options');
     timerBar = document.getElementById('powerup-timer-bar');
     descriptionElements = [
@@ -101,6 +106,7 @@ function initPowerupUI() {
         document.getElementById('powerup-desc-2'),
         document.getElementById('powerup-desc-3')
     ];
+    debugLog("Powerup UI initialized");
 }
 
 function resetTimer() {
@@ -175,6 +181,7 @@ function selectPowerup() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    debugLog("Document loaded");
     initPowerupUI();
     initializeRenderThread();
     initializeInputThread();
