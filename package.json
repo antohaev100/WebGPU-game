@@ -1,13 +1,37 @@
 {
-  "name": "webgpu-game",
+  "name": "webgpu-2d-shooter",
+  "version": "1.0.0",
+  "description": "Educational WebGPU 2D shooter demonstrating modern web graphics programming, compute shaders, and high-performance game development techniques",
   "private": true,
-  "version": "0.0.0",
   "type": "module",
+  "keywords": [
+    "webgpu",
+    "game-development", 
+    "compute-shaders",
+    "typescript",
+    "educational",
+    "graphics-programming",
+    "wgsl",
+    "web-workers",
+    "spatial-hashing",
+    "gpu-programming"
+  ],
+  "author": "Anton Haevaker",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/antohaev100/WebGPU-game.git"
+  },
+  "bugs": {
+    "url": "https://github.com/antohaev100/WebGPU-game/issues"
+  },
+  "homepage": "https://github.com/antohaev100/WebGPU-game#readme",
   "scripts": {
     "dev": "vite",
     "dev:debug": "vite --mode debug",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/gl-matrix": "^2.4.5",
